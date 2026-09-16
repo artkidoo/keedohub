@@ -1,0 +1,651 @@
+import { relations, sql } from "drizzle-orm";
+import {
+  bigint,
+  boolean,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+
+/* ==========================================================================
+   Authentication tables (Better Auth core schema)
+   Field names follow Better Auth's expected core schema; see
+   https://www.better-auth.com/docs/concepts/database
+   ========================================================================== */
+
+export const user = pgTable("user", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("email_verified")
+    .notNull()
+    .default(false)
+    .$type<boolean>(),
+  image: text("image"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const session = pgTable(
+  "session",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [index("session_user_id_idx").on(table.userId)],
+);
+
+export const account = pgTable(
+  "account",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: timestamp("access_token_expires_at"),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at"),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [index("account_user_id_idx").on(table.userId)],
+);
+
+export const verification = pgTable("verification", {
+  id: text("id").primaryKey(),
+  identifier: text("identifier").notNull(),
+  value: text("value").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/* ==========================================================================
+   KeedoHub domain foundation
+   user → workspace → brand/artist context. Every future query resolves
+   through this chain (spec §8, §20).
+   ========================================================================== */
+
+export const workspace = pgTable(
+  "workspace",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    /** The customer who owns this workspace. One owner per workspace. */
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Stable, URL-safe identifier. */
+    slug: text("slug").notNull().unique(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("workspace_user_id_idx").on(table.userId)],
+);
+
+/**
+ * Brand context of a workspace. A workspace may have one Brand profile and
+ * one Artist profile — both, either, or neither over time (spec §5).
+ * Fields stay minimal until the profile foundation is wired to real data.
+ */
+export const brandProfile = pgTable(
+  "brand_profile",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    /** Display name of the brand; null until the customer provides one. */
+    name: text("name"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("brand_profile_workspace_id_idx").on(table.workspaceId)],
+);
+
+export const artistProfile = pgTable(
+  "artist_profile",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    /** Stage name of the artist; null until the customer provides one. */
+    name: text("name"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("artist_profile_workspace_id_idx").on(table.workspaceId)],
+);
+
+/* Relations */
+
+export const userRelations = relations(user, ({ one }) => ({
+  workspace: one(workspace, {
+    fields: [user.id],
+    references: [workspace.userId],
+  }),
+}));
+
+export const workspaceRelations = relations(workspace, ({ one, many }) => ({
+  owner: one(user, {
+    fields: [workspace.userId],
+    references: [user.id],
+  }),
+  brandProfiles: many(brandProfile),
+  artistProfiles: many(artistProfile),
+}));
+
+export const brandProfileRelations = relations(brandProfile, ({ one }) => ({
+  workspace: one(workspace, {
+    fields: [brandProfile.workspaceId],
+    references: [workspace.id],
+  }),
+}));
+
+export const artistProfileRelations = relations(artistProfile, ({ one }) => ({
+  workspace: one(workspace, {
+    fields: [artistProfile.workspaceId],
+    references: [workspace.id],
+  }),
+}));
+
+export type User = typeof user.$inferSelect;
+export type Workspace = typeof workspace.$inferSelect;
+export type BrandProfile = typeof brandProfile.$inferSelect;
+export type ArtistProfile = typeof artistProfile.$inferSelect;
+
+/* ==========================================================================
+   Production domain (spec §8–§14)
+   request → project → production job → deliverable → review/delivery
+   Every entity carries a workspace FK: customer isolation is enforced by
+   resolving the workspace from the authenticated session only (spec §19–§20).
+   ========================================================================== */
+
+/** Which experience of the one workspace an entity belongs to (spec §5). */
+export const contextTypeEnum = pgEnum("context_type", ["brand", "artist"]);
+
+/** Request lifecycle (spec §8.3). Terminal: accepted → project, or declined. */
+export const requestStatusEnum = pgEnum("request_status", [
+  "submitted",
+  "in_validation",
+  "changes_needed",
+  "accepted",
+  "declined",
+]);
+
+/** Customer-visible project status (spec §9.3). Derived, server-maintained. */
+export const projectStatusEnum = pgEnum("project_status", [
+  "requested",
+  "in_production",
+  "in_review",
+  "changes_requested",
+  "approved",
+  "delivered",
+]);
+
+/** Internal production queue states (spec §10.3). Never shown to customers. */
+export const jobStatusEnum = pgEnum("job_status", [
+  "incoming",
+  "briefing",
+  "in_production",
+  "internal_qa",
+  "customer_review",
+  "changes_requested",
+  "approved",
+  "delivered",
+]);
+
+/** Deliverable status, derived from its job (spec §11.2). */
+export const deliverableStatusEnum = pgEnum("deliverable_status", [
+  "in_production",
+  "internal_qa",
+  "customer_review",
+  "changes_requested",
+  "approved",
+  "delivered",
+]);
+
+/** Asset categories (spec §12.2). */
+export const assetCategoryEnum = pgEnum("asset_category", [
+  "reference",
+  "identity",
+  "source",
+  "delivered",
+  "library",
+]);
+
+/** Exactly two review actions exist (spec §13.3). */
+export const reviewActionEnum = pgEnum("review_action", [
+  "approve",
+  "request_changes",
+]);
+
+/* -- Request (§8): the customer's expressed intent, before any production -- */
+
+export const request = pgTable(
+  "request",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    /** Exactly one context: brand or artist. */
+    contextType: contextTypeEnum("context_type").notNull(),
+    brandProfileId: uuid("brand_profile_id").references(() => brandProfile.id, {
+      onDelete: "cascade",
+    }),
+    artistProfileId: uuid("artist_profile_id").references(
+      () => artistProfile.id,
+      { onDelete: "cascade" },
+    ),
+    /** What the customer wants, in their words (spec §8.2). */
+    title: text("title").notNull(),
+    description: text("description"),
+    /** Extensible category, e.g. "document", "cover_artwork", "social_content". */
+    category: text("category").notNull(),
+    /** Structured requirements (sizes, formats, platforms, quantities). */
+    requirements: jsonb("requirements"),
+    /** Links/examples the customer likes; files arrive later as assets. */
+    referenceLinks: jsonb("reference_links"),
+    /** Requested date where genuinely needed. Never implies scheduling. */
+    requestedDate: text("requested_date"),
+    status: requestStatusEnum("status").notNull().default("submitted"),
+    /** Reason for changes_needed / declined; shown to the customer. */
+    statusReason: text("status_reason"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("request_workspace_id_idx").on(table.workspaceId),
+    index("request_status_idx").on(table.status),
+    // Exactly one context reference must be set, matching contextType.
+    check(
+      "request_context_exclusive",
+      sql`(${table.brandProfileId} is null) <> (${table.artistProfileId} is null)`,
+    ),
+    check(
+      "request_context_matches",
+      sql`(${table.contextType} = 'brand' and ${table.brandProfileId} is not null)
+       or (${table.contextType} = 'artist' and ${table.artistProfileId} is not null)`,
+    ),
+  ],
+);
+
+/* -- Project (§9): groups related creative work; may originate from a request */
+
+export const project = pgTable(
+  "project",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    contextType: contextTypeEnum("context_type").notNull(),
+    brandProfileId: uuid("brand_profile_id").references(() => brandProfile.id, {
+      onDelete: "cascade",
+    }),
+    artistProfileId: uuid("artist_profile_id").references(
+      () => artistProfile.id,
+      { onDelete: "cascade" },
+    ),
+    /** The accepted request this project fulfils, when one exists. */
+    requestId: uuid("request_id").references(() => request.id, {
+      onDelete: "set null",
+    }),
+    name: text("name").notNull(),
+    description: text("description"),
+    /**
+     * Derived from jobs/reviews by server transitions (spec §9.4 rule 2);
+     * never written by ad-hoc client input.
+     */
+    status: projectStatusEnum("status").notNull().default("requested"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("project_workspace_id_idx").on(table.workspaceId),
+    index("project_status_idx").on(table.status),
+    check(
+      "project_context_exclusive",
+      sql`(${table.brandProfileId} is null) <> (${table.artistProfileId} is null)`,
+    ),
+  ],
+);
+
+/* -- Production job (§10): the internal unit of Studio work ---------------- */
+
+export const productionJob = pgTable(
+  "production_job",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    /** Internal queue state (spec §10.3). Internal vocabulary only. */
+    status: jobStatusEnum("status").notNull().default("incoming"),
+    /** Structured production instructions assembled during briefing. */
+    brief: jsonb("brief"),
+    /** Operator attribution (PLANNED). Not a customer concept. */
+    assignedTo: text("assigned_to"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("production_job_workspace_id_idx").on(table.workspaceId),
+    index("production_job_project_id_idx").on(table.projectId),
+    index("production_job_status_idx").on(table.status),
+  ],
+);
+
+/* -- Deliverable (§11): the piece of work the customer receives ------------ */
+
+export const deliverable = pgTable(
+  "deliverable",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => productionJob.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Extensible type/purpose, e.g. "cover_artwork", "social_kit", "pdf". */
+    type: text("type").notNull(),
+    /** Derived from the job (spec §11.2). */
+    status: deliverableStatusEnum("status").notNull().default("in_production"),
+    /** Current version number; history is preserved, never overwritten. */
+    currentVersion: integer("current_version").notNull().default(1),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("deliverable_workspace_id_idx").on(table.workspaceId),
+    index("deliverable_project_id_idx").on(table.projectId),
+    index("deliverable_job_id_idx").on(table.jobId),
+    index("deliverable_status_idx").on(table.status),
+  ],
+);
+
+/* -- Asset (§12): a stored file/resource, prepared for object storage ------ */
+
+export const asset = pgTable(
+  "asset",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    brandProfileId: uuid("brand_profile_id").references(() => brandProfile.id, {
+      onDelete: "cascade",
+    }),
+    artistProfileId: uuid("artist_profile_id").references(
+      () => artistProfile.id,
+      { onDelete: "cascade" },
+    ),
+    projectId: uuid("project_id").references(() => project.id, {
+      onDelete: "set null",
+    }),
+    jobId: uuid("job_id").references(() => productionJob.id, {
+      onDelete: "set null",
+    }),
+    deliverableId: uuid("deliverable_id").references(() => deliverable.id, {
+      onDelete: "set null",
+    }),
+    category: assetCategoryEnum("category").notNull(),
+    filename: text("filename").notNull(),
+    mimeType: text("mime_type"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
+    /** Object-storage key/location. Real storage integration is PLANNED. */
+    storageKey: text("storage_key"),
+    storageProvider: text("storage_provider").notNull().default("s3"),
+    /** Versions are preserved; overwriting in place is not permitted (§12.3). */
+    version: integer("version").notNull().default(1),
+    /** Customer-facing visibility. Source/working files are internal by default. */
+    customerVisible: boolean("customer_visible").notNull().default(false),
+    /** Flexible metadata (dimensions, duration, platform requirements). */
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("asset_workspace_id_idx").on(table.workspaceId),
+    index("asset_deliverable_id_idx").on(table.deliverableId),
+    index("asset_project_id_idx").on(table.projectId),
+    index("asset_category_idx").on(table.category),
+  ],
+);
+
+/* -- Review (§13): immutable approval/change-request event ------------------ */
+
+export const review = pgTable(
+  "review",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    deliverableId: uuid("deliverable_id")
+      .notNull()
+      .references(() => deliverable.id, { onDelete: "cascade" }),
+    /** Approval applies to a specific version, never in the abstract (§13.3). */
+    version: integer("version").notNull(),
+    action: reviewActionEnum("action").notNull(),
+    /** Required when action = request_changes; retained permanently. */
+    feedback: text("feedback"),
+    /** Customer user id (PLANNED attribution once auth data is linked). */
+    reviewedBy: text("reviewed_by"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("review_workspace_id_idx").on(table.workspaceId),
+    index("review_deliverable_id_idx").on(table.deliverableId),
+    check(
+      "review_changes_need_feedback",
+      sql`${table.action} <> 'request_changes' or ${table.feedback} is not null`,
+    ),
+  ],
+);
+
+/* -- Delivery (§14): finalises approved work into the customer's library --- */
+
+export const delivery = pgTable(
+  "delivery",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    deliverableId: uuid("deliverable_id")
+      .notNull()
+      .references(() => deliverable.id, { onDelete: "cascade" }),
+    /** The version that was delivered; delivered work is immutable (§14.2). */
+    version: integer("version").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    index("delivery_workspace_id_idx").on(table.workspaceId),
+    index("delivery_project_id_idx").on(table.projectId),
+    index("delivery_deliverable_id_idx").on(table.deliverableId),
+  ],
+);
+
+/* -- Relations -------------------------------------------------------------- */
+
+export const requestRelations = relations(request, ({ one }) => ({
+  workspace: one(workspace, {
+    fields: [request.workspaceId],
+    references: [workspace.id],
+  }),
+  brandProfile: one(brandProfile, {
+    fields: [request.brandProfileId],
+    references: [brandProfile.id],
+  }),
+  artistProfile: one(artistProfile, {
+    fields: [request.artistProfileId],
+    references: [artistProfile.id],
+  }),
+}));
+
+export const projectRelations = relations(project, ({ one, many }) => ({
+  workspace: one(workspace, {
+    fields: [project.workspaceId],
+    references: [workspace.id],
+  }),
+  request: one(request, {
+    fields: [project.requestId],
+    references: [request.id],
+  }),
+  jobs: many(productionJob),
+  deliverables: many(deliverable),
+}));
+
+export const productionJobRelations = relations(
+  productionJob,
+  ({ one, many }) => ({
+    workspace: one(workspace, {
+      fields: [productionJob.workspaceId],
+      references: [workspace.id],
+    }),
+    project: one(project, {
+      fields: [productionJob.projectId],
+      references: [project.id],
+    }),
+    deliverables: many(deliverable),
+  }),
+);
+
+export const deliverableRelations = relations(deliverable, ({ one, many }) => ({
+  workspace: one(workspace, {
+    fields: [deliverable.workspaceId],
+    references: [workspace.id],
+  }),
+  project: one(project, {
+    fields: [deliverable.projectId],
+    references: [project.id],
+  }),
+  job: one(productionJob, {
+    fields: [deliverable.jobId],
+    references: [productionJob.id],
+  }),
+  reviews: many(review),
+  deliveries: many(delivery),
+  assets: many(asset),
+}));
+
+export const assetRelations = relations(asset, ({ one }) => ({
+  workspace: one(workspace, {
+    fields: [asset.workspaceId],
+    references: [workspace.id],
+  }),
+  deliverable: one(deliverable, {
+    fields: [asset.deliverableId],
+    references: [deliverable.id],
+  }),
+  job: one(productionJob, {
+    fields: [asset.jobId],
+    references: [productionJob.id],
+  }),
+}));
+
+export const reviewRelations = relations(review, ({ one }) => ({
+  workspace: one(workspace, {
+    fields: [review.workspaceId],
+    references: [workspace.id],
+  }),
+  deliverable: one(deliverable, {
+    fields: [review.deliverableId],
+    references: [deliverable.id],
+  }),
+}));
+
+export const deliveryRelations = relations(delivery, ({ one }) => ({
+  workspace: one(workspace, {
+    fields: [delivery.workspaceId],
+    references: [workspace.id],
+  }),
+  project: one(project, {
+    fields: [delivery.projectId],
+    references: [project.id],
+  }),
+  deliverable: one(deliverable, {
+    fields: [delivery.deliverableId],
+    references: [deliverable.id],
+  }),
+}));
+
+/* -- Domain types (database-derived; no duplicate definitions) -------------- */
+
+export type Request = typeof request.$inferSelect;
+export type NewRequest = typeof request.$inferInsert;
+export type Project = typeof project.$inferSelect;
+export type NewProject = typeof project.$inferInsert;
+export type ProductionJob = typeof productionJob.$inferSelect;
+export type NewProductionJob = typeof productionJob.$inferInsert;
+export type Deliverable = typeof deliverable.$inferSelect;
+export type NewDeliverable = typeof deliverable.$inferInsert;
+export type Asset = typeof asset.$inferSelect;
+export type NewAsset = typeof asset.$inferInsert;
+export type Review = typeof review.$inferSelect;
+export type NewReview = typeof review.$inferInsert;
+export type Delivery = typeof delivery.$inferSelect;
+export type NewDelivery = typeof delivery.$inferInsert;
+
+export type RequestContextType = (typeof contextTypeEnum.enumValues)[number];
+export type RequestStatus = (typeof requestStatusEnum.enumValues)[number];
+export type ProjectStatus = (typeof projectStatusEnum.enumValues)[number];
+export type JobStatus = (typeof jobStatusEnum.enumValues)[number];
+export type DeliverableStatus = (typeof deliverableStatusEnum.enumValues)[number];
+export type AssetCategory = (typeof assetCategoryEnum.enumValues)[number];
+export type ReviewAction = (typeof reviewActionEnum.enumValues)[number];
