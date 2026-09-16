@@ -6,14 +6,12 @@ import { Container } from "@/components/layout/container";
 import { PageHeader } from "@/components/layout/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ProfileFoundation } from "@/components/workspace/profile-foundation";
 import {
   findNavItemBySlug,
   getContextMeta,
   isWorkspaceContext,
   navIcon,
 } from "@/lib/navigation";
-import { workspaceHome } from "@/lib/workspace";
 import { cn } from "@/lib/utils";
 
 type SectionPageProps = {
@@ -52,7 +50,6 @@ export default async function WorkspaceSectionPage({
   }
 
   const sectionIcon = navIcon(item.icon);
-  const isProfile = section === "profile";
 
   return (
     <Container className="flex flex-col gap-8 py-8 sm:gap-10 sm:py-12">
@@ -65,28 +62,20 @@ export default async function WorkspaceSectionPage({
         description={item.description}
       />
 
-      {isProfile ? (
-        <ProfileFoundation
-          contextLabel={meta.label}
-          profileHref={item.href}
-          groups={workspaceHome[context].groups}
-        />
-      ) : (
-        <EmptyState
-          icon={sectionIcon}
-          title="This area is being built"
-          description="The shell, navigation and design system are in place. This space will hold real work as the workspace is completed — nothing is faked here in the meantime."
-          action={
-            <Link
-              href={meta.href}
-              className={cn(buttonVariants({ variant: "outline" }))}
-            >
-              <ArrowLeft aria-hidden />
-              Back to dashboard
-            </Link>
-          }
-        />
-      )}
+      <EmptyState
+        icon={sectionIcon}
+        title="This area is being built"
+        description="The shell, navigation and design system are in place. This space will hold real work as the workspace is completed — nothing is faked here in the meantime."
+        action={
+          <Link
+            href={meta.href}
+            className={cn(buttonVariants({ variant: "outline" }))}
+          >
+            <ArrowLeft aria-hidden />
+            Back to dashboard
+          </Link>
+        }
+      />
     </Container>
   );
 }

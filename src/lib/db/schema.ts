@@ -107,9 +107,50 @@ export const workspace = pgTable(
 );
 
 /**
+ * Social media handles/URLs keyed by platform. Empty object when unset.
+ */
+export type SocialLinks = {
+  instagram?: string;
+  twitter?: string;
+  linkedin?: string;
+  facebook?: string;
+  tiktok?: string;
+};
+
+/**
+ * Streaming-platform links keyed by platform. Empty object when unset.
+ */
+export type StreamingLinks = {
+  spotify?: string;
+  appleMusic?: string;
+  soundcloud?: string;
+  bandcamp?: string;
+  youtube?: string;
+};
+
+/**
+ * Palette of brand / artist colours. Values are hex codes or CSS color
+ * strings (e.g. "#1a1a1a", "hsl(0 0% 0%)").
+ */
+export type BrandColors = {
+  primary?: string;
+  secondary?: string;
+  accent?: string;
+  background?: string;
+};
+
+/**
+ * Typography preferences for a brand or artist profile.
+ */
+export type Typography = {
+  headingFont?: string;
+  bodyFont?: string;
+  notes?: string;
+};
+
+/**
  * Brand context of a workspace. A workspace may have one Brand profile and
  * one Artist profile — both, either, or neither over time (spec §5).
- * Fields stay minimal until the profile foundation is wired to real data.
  */
 export const brandProfile = pgTable(
   "brand_profile",
@@ -120,14 +161,66 @@ export const brandProfile = pgTable(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspace.id, { onDelete: "cascade" }),
-    /** Display name of the brand; null until the customer provides one. */
+    /** Display name of the brand. */
     name: text("name"),
+    /** Legal entity name (for contracts / invoices). */
+    legalName: text("legal_name"),
+    /** Short description of what the brand is or does. */
+    description: text("description"),
+    /** Industry or category the brand operates in. */
+    industry: text("industry"),
+    /** Core products or services offered. */
+    productsServices: text("products_services"),
+    /** City and country, or general region. */
+    location: text("location"),
+    /** Full postal address (multi-line). */
+    address: text("address"),
+    /** Primary contact email. */
+    contactEmail: text("contact_email"),
+    /** Primary contact phone number. */
+    contactPhone: text("contact_phone"),
+    /** Website URL. */
+    website: text("website"),
+    /** Social media links (platform -> URL). */
+    socialLinks: jsonb("social_links").$type<SocialLinks | null>(),
+    /** Identifier / path for the primary logo asset. */
+    primaryLogo: text("primary_logo"),
+    /** Identifier / path for a secondary logo, if applicable. */
+    secondaryLogo: text("secondary_logo"),
+    /** Brand colour palette. */
+    colors: jsonb("colors").$type<BrandColors | null>(),
+    /** Typography preferences (heading, body, notes). */
+    typography: jsonb("typography").$type<Typography | null>(),
+    /** Narrative description of the visual style direction. */
+    visualStyle: text("visual_style"),
+    /** Narrative description of the imagery style direction. */
+    imageryStyle: text("imagery_style"),
+    /** Preferred layout direction for documents and assets. */
+    preferredLayouts: text("preferred_layouts"),
+    /** Inspiration and reference material the brand has supplied. */
+    references: text("references"),
+    /** Core personality traits of the brand. */
+    personality: text("personality"),
+    /** Brand voice description. */
+    voice: text("voice"),
+    /** Brand tone guidance. */
+    tone: text("tone"),
+    /** Who the brand speaks to. */
+    targetAudience: text("target_audience"),
+    /** The brand's core value proposition. */
+    valueProposition: text("value_proposition"),
+    /** Other useful brand detail. */
+    otherInfo: text("other_info"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [uniqueIndex("brand_profile_workspace_id_idx").on(table.workspaceId)],
 );
 
+/**
+ * Artist context of a workspace. A workspace may have one Brand profile and
+ * one Artist profile — both, either, or neither over time (spec §5).
+ */
 export const artistProfile = pgTable(
   "artist_profile",
   {
@@ -137,8 +230,32 @@ export const artistProfile = pgTable(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspace.id, { onDelete: "cascade" }),
-    /** Stage name of the artist; null until the customer provides one. */
+    /** Stage / artist name. */
     name: text("name"),
+    /** Artist biography / story. */
+    bio: text("bio"),
+    /** Musical genre(s). */
+    genre: text("genre"),
+    /** City and country, or general region. */
+    location: text("location"),
+    /** Primary contact email. */
+    contactEmail: text("contact_email"),
+    /** Primary contact phone number. */
+    contactPhone: text("contact_phone"),
+    /** Website or press kit URL. */
+    website: text("website"),
+    /** Social media links (platform -> URL). */
+    socialLinks: jsonb("social_links").$type<SocialLinks | null>(),
+    /** Streaming-platform links (platform -> URL). */
+    streamingLinks: jsonb("streaming_links").$type<StreamingLinks | null>(),
+    /** Narrative description of the visual identity direction. */
+    visualIdentity: text("visual_identity"),
+    /** Artist colour palette. */
+    colors: jsonb("colors").$type<BrandColors | null>(),
+    /** Creative preferences (inspiration, references, constraints). */
+    creativePreferences: text("creative_preferences"),
+    /** Other useful artist identity information. */
+    otherInfo: text("other_info"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
