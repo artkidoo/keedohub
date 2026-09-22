@@ -58,6 +58,17 @@ export function configureLocalProvider(baseDir: string): void {
  * errors later.
  */
 function ensureConfigured(): void {
+  // Lazily configure from the environment on first use, matching the
+  // setup documented in `.env.example` (STORAGE_LOCAL_BASE_DIR). This keeps
+  // module import side-effect free while making the provider usable in the
+  // running app without a dedicated startup call site.
+  if (!baseDirectory) {
+    const configured = process.env.STORAGE_LOCAL_BASE_DIR;
+    if (configured) {
+      configureLocalProvider(configured);
+      return;
+    }
+  }
   if (!baseDirectory) {
     throw configurationError(
       "Local storage provider has not been configured. Call configureLocalProvider(baseDir) at startup.",
