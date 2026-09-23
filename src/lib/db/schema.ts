@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -448,6 +449,19 @@ export const project = pgTable(
      * never written by ad-hoc client input.
      */
     status: projectStatusEnum("status").notNull().default("requested"),
+    /**
+     * Artist release metadata (Checkpoint 2.6).
+     *
+     * A release IS a project: the spec's artist project types are New Single /
+     * EP Launch / Album Release, so no separate release entity is introduced
+     * and nothing is duplicated. A non-null `releaseType` marks the project as
+     * a release for the Artist release surfaces; null means an ordinary artist
+     * project (EPK, brand refresh, …). Values stay extensible text — adding a
+     * release type must never require structural change.
+     */
+    releaseType: text("release_type"),
+    /** The release's own date, when the artist has one. Never a schedule. */
+    releaseDate: date("release_date"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -457,6 +471,12 @@ export const project = pgTable(
     check(
       "project_context_exclusive",
       sql`(${table.brandProfileId} is null) <> (${table.artistProfileId} is null)`,
+    ),
+    // Release metadata belongs to the Artist context only.
+    check(
+      "project_release_artist_only",
+      sql`(${table.releaseType} is null and ${table.releaseDate} is null)
+       or ${table.contextType} = 'artist'`,
     ),
   ],
 );

@@ -1,18 +1,14 @@
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Container } from "@/components/layout/container";
 import { PageHeader } from "@/components/layout/page-header";
-import { buttonVariants } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
+import { SectionPlaceholder } from "@/components/workspace/section-placeholder";
 import {
   findNavItemBySlug,
   getContextMeta,
   isWorkspaceContext,
   navIcon,
 } from "@/lib/navigation";
-import { cn } from "@/lib/utils";
 
 type SectionPageProps = {
   params: Promise<{ context: string; section: string }>;
@@ -62,20 +58,8 @@ export default async function WorkspaceSectionPage({
         description={item.description}
       />
 
-      <EmptyState
-        icon={sectionIcon}
-        title="This area is being built"
-        description="The shell, navigation and design system are in place. This space will hold real work as the workspace is completed — nothing is faked here in the meantime."
-        action={
-          <Link
-            href={meta.href}
-            className={cn(buttonVariants({ variant: "outline" }))}
-          >
-            <ArrowLeft aria-hidden />
-            Back to dashboard
-          </Link>
-        }
-      />
+      {/* Shared copy and markup, identical wherever a placeholder resolves. */}
+      <SectionPlaceholder icon={sectionIcon} backHref={meta.href} />
     </Container>
   );
 }

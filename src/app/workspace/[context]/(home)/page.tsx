@@ -1,4 +1,4 @@
-import { CheckCheck, FileText, FolderOpen, Images, Megaphone } from "lucide-react";
+import { CheckCheck, Disc3, FileText, FolderOpen, Images, Megaphone } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -12,6 +12,7 @@ import { getDashboardData } from "@/domains/dashboard/queries";
 import { profileStatusFor } from "@/domains/dashboard/profile-status";
 import { quickRequestsFor } from "@/domains/dashboard/quick-requests";
 import { countOutputs } from "@/domains/outputs/data";
+import { countArtistOutputs } from "@/domains/releases/data";
 import { projectStatusLabels, requestStatusLabels } from "@/domains/production/status";
 import { requireWorkspaceContext } from "@/domains/workspace/access";
 import { isWorkspaceContext } from "@/lib/navigation";
@@ -36,6 +37,10 @@ export default async function WorkspaceContextPage({ params }: ContextPageProps)
   // Real "ready to open" counts for the materials links (Checkpoint 2.5).
   // The Artist context has no such areas yet, so nothing is queried for it.
   const materials = brand ? await countOutputs(access, context) : null;
+  // Real "ready to open" counts for the Artist releases/assets links
+  // (Checkpoint 2.6). Brand has its own materials section, so nothing extra
+  // is queried for it.
+  const artistOutputs = brand ? null : await countArtistOutputs(access, context);
 
   return (
     <Container className="flex min-w-0 flex-col gap-10 py-8 [overflow-wrap:anywhere] sm:gap-14 sm:py-12">
@@ -126,6 +131,42 @@ export default async function WorkspaceContextPage({ params }: ContextPageProps)
       <DashboardSection labelledBy="quick-requests" eyebrow="What comes next" title="What can I request?" description="Explore what we can make together, then start a request whenever you are ready.">
         <DashboardQuickRequests requests={quickRequestsFor(context)} label={`${label} quick requests`} />
       </DashboardSection>
+      {/* Artist releases/assets links with real counts (Checkpoint 2.6).
+          Additive section only; everything above is untouched. */}
+      {artistOutputs ? (
+        <DashboardSection labelledBy="release-library" eyebrow="Your catalog" title="Releases & assets" description="What you have released, and the artwork and files behind it.">
+          <DashboardList>
+            <li>
+              <Link href={`/workspace/${context}/releases`} className="group flex min-h-11 flex-col gap-2 rounded-sm py-5 outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/35 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+                <span className="flex min-w-0 items-center gap-3">
+                  <Disc3 aria-hidden className="size-5 shrink-0 text-primary" />
+                  <span className="min-w-0">
+                    <span className="block text-heading font-semibold text-foreground transition-colors group-hover:text-primary">My Releases</span>
+                    <span className="block text-sm text-muted-foreground">Singles, EPs and albums we have created for you</span>
+                  </span>
+                </span>
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  {artistOutputs.releases === 0 ? "None yet" : `${artistOutputs.releases} available`}
+                </span>
+              </Link>
+            </li>
+            <li>
+              <Link href={`/workspace/${context}/assets`} className="group flex min-h-11 flex-col gap-2 rounded-sm py-5 outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/35 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+                <span className="flex min-w-0 items-center gap-3">
+                  <Images aria-hidden className="size-5 shrink-0 text-primary" />
+                  <span className="min-w-0">
+                    <span className="block text-heading font-semibold text-foreground transition-colors group-hover:text-primary">My Assets</span>
+                    <span className="block text-sm text-muted-foreground">Cover artwork, social graphics and creative files</span>
+                  </span>
+                </span>
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  {artistOutputs.assets === 0 ? "None yet" : `${artistOutputs.assets} available`}
+                </span>
+              </Link>
+            </li>
+          </DashboardList>
+        </DashboardSection>
+      ) : null}
     </Container>
   );
 }
