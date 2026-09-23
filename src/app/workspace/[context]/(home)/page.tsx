@@ -1,4 +1,5 @@
-import { CheckCheck, FolderOpen, Images } from "lucide-react";
+import { CheckCheck, FileText, FolderOpen, Images, Megaphone } from "lucide-react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Container } from "@/components/layout/container";
@@ -10,6 +11,7 @@ import { WorkList } from "@/components/dashboard/work-list";
 import { getDashboardData } from "@/domains/dashboard/queries";
 import { profileStatusFor } from "@/domains/dashboard/profile-status";
 import { quickRequestsFor } from "@/domains/dashboard/quick-requests";
+import { countOutputs } from "@/domains/outputs/data";
 import { projectStatusLabels, requestStatusLabels } from "@/domains/production/status";
 import { requireWorkspaceContext } from "@/domains/workspace/access";
 import { isWorkspaceContext } from "@/lib/navigation";
@@ -31,6 +33,9 @@ export default async function WorkspaceContextPage({ params }: ContextPageProps)
   const data = await getDashboardData(access, context);
   const brand = context === "brand";
   const label = brand ? "Brand" : "Artist";
+  // Real "ready to open" counts for the materials links (Checkpoint 2.5).
+  // The Artist context has no such areas yet, so nothing is queried for it.
+  const materials = brand ? await countOutputs(access, context) : null;
 
   return (
     <Container className="flex min-w-0 flex-col gap-10 py-8 [overflow-wrap:anywhere] sm:gap-14 sm:py-12">
@@ -46,9 +51,75 @@ export default async function WorkspaceContextPage({ params }: ContextPageProps)
       <DashboardSection labelledBy="creative-work" eyebrow="Made for you" title={brand ? "Recent creative work" : "Recent artwork & creative work"} description="Your latest approved and delivered pieces. Up to six recent items are shown.">
         {data.created.length ? <WorkList items={data.created} context={context} /> : <DashboardSectionEmpty icon={Images} title={brand ? "Your creative library starts here" : "A place for your next creative chapter"} description={brand ? "As your work is approved and delivered, you will find it here. No finished work yet." : "Approved artwork and release assets will appear here when they exist. No finished work yet."} action={{ label: "Shape your profile", href: `/workspace/${context}/profile` }} />}
       </DashboardSection>
+      {materials ? (
+        <DashboardSection
+          labelledBy="your-materials"
+          eyebrow="Ready for you"
+          title="Documents & marketing"
+          description="Business, brand and marketing creative we have created for you. The counts are what you can open right now."
+        >
+          <DashboardList>
+            <li>
+              <Link
+                href={`/workspace/${context}/documents`}
+                className="group flex min-h-11 flex-col gap-2 rounded-sm py-5 outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/35 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <FileText aria-hidden className="size-5 shrink-0 text-primary" />
+                  <span className="min-w-0">
+                    <span className="block text-heading font-semibold text-foreground transition-colors group-hover:text-primary">
+                      My Documents
+                    </span>
+                    <span className="block text-sm text-muted-foreground">
+                      Guidelines, profiles, presentations and letterheads
+                    </span>
+                  </span>
+                </span>
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  {materials.documents === 0
+                    ? "None yet"
+                    : `${materials.documents} available`}
+                </span>
+              </Link>
+            </li>
+            <li>
+              <Link
+                href={`/workspace/${context}/marketing`}
+                className="group flex min-h-11 flex-col gap-2 rounded-sm py-5 outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/35 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <Megaphone aria-hidden className="size-5 shrink-0 text-primary" />
+                  <span className="min-w-0">
+                    <span className="block text-heading font-semibold text-foreground transition-colors group-hover:text-primary">
+                      My Marketing
+                    </span>
+                    <span className="block text-sm text-muted-foreground">
+                      Social kits, promotional creative and content packs
+                    </span>
+                  </span>
+                </span>
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  {materials.marketing === 0
+                    ? "None yet"
+                    : `${materials.marketing} available`}
+                </span>
+              </Link>
+            </li>
+          </DashboardList>
+        </DashboardSection>
+      ) : null}
       <DashboardSection labelledBy="active-work" eyebrow="Moving forward" title="What is being worked on?" description="Your most recently updated projects and requests. Up to six of each are shown.">
         {data.projects.length || data.requests.length ? <DashboardList>
-          {data.projects.map((item) => <li key={item.id} className="py-5"><p className="text-meta text-muted-foreground">Your project</p><h3 className="text-heading font-semibold">{item.name}</h3><p className="mt-1 text-sm text-muted-foreground">{item.status === "in_review" ? "Waiting for your review" : projectStatusLabels[item.status]}</p></li>)}
+          {data.projects.map((item) => (
+            <li key={item.id}>
+              {/* Link to the customer project detail (Checkpoint 2.4). */}
+              <Link href={`/workspace/${context}/projects/${item.id}`} className="group flex min-h-11 flex-col gap-1 rounded-sm py-5 outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/35">
+                <p className="text-meta text-muted-foreground">Your project</p>
+                <h3 className="text-heading font-semibold transition-colors group-hover:text-primary">{item.name}</h3>
+                <p className="text-sm text-muted-foreground">{projectStatusLabels[item.status]}</p>
+              </Link>
+            </li>
+          ))}
           {data.requests.map((item) => <li key={item.id} className="py-5"><p className="text-meta text-muted-foreground">Your request</p><h3 className="text-heading font-semibold">{item.name}</h3><p className="mt-1 text-sm text-muted-foreground">{requestStatusLabels[item.status]}</p></li>)}
         </DashboardList> : <DashboardSectionEmpty icon={FolderOpen} title="No active work yet" description="Once your first request is underway, its progress will appear here." />}
       </DashboardSection>
