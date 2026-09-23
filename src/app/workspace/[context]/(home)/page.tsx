@@ -52,7 +52,7 @@ export default async function WorkspaceContextPage({ params }: ContextPageProps)
           {data.requests.map((item) => <li key={item.id} className="py-5"><p className="text-meta text-muted-foreground">Your request</p><h3 className="text-heading font-semibold">{item.name}</h3><p className="mt-1 text-sm text-muted-foreground">{requestStatusLabels[item.status]}</p></li>)}
         </DashboardList> : <DashboardSectionEmpty icon={FolderOpen} title="No active work yet" description="Once your first request is underway, its progress will appear here." />}
       </DashboardSection>
-      <DashboardSection labelledBy="quick-requests" eyebrow="What comes next" title="What can I request?" description="Explore what we can make together. The request experience is coming soon.">
+      <DashboardSection labelledBy="quick-requests" eyebrow="What comes next" title="What can I request?" description="Explore what we can make together, then start a request whenever you are ready.">
         <DashboardQuickRequests requests={quickRequestsFor(context)} label={`${label} quick requests`} />
       </DashboardSection>
     </Container>

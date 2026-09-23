@@ -3,16 +3,16 @@ import type { NavIconName, WorkspaceContext } from "@/lib/navigation";
 /**
  * Dashboard quick requests (Phase 2.2).
  *
- * Customer-friendly actions in customer language. These point at the future
- * Request experience (the per-context requests route) — the full Requests
- * system is Checkpoint 2.3, so the dashboard only links, never implements.
+ * Customer-friendly actions in customer language. Each links to the Requests
+ * list for its context — the dashboard signposts the Request experience; the
+ * requesting itself lives on the per-context requests routes (Checkpoint 2.3).
  */
 
 export type DashboardQuickRequest = {
   id: string;
   title: string;
   description: string;
-  /** Route of the future Request experience for this context. */
+  /** Route of the Request experience for this context. */
   href: string;
   icon: NavIconName;
 };
@@ -90,7 +90,7 @@ export function quickRequestsFor(
   return context === "brand" ? brandQuickRequests : artistQuickRequests;
 }
 
-/** Dashboard section anchor for the future requests routes. */
+/** Dashboard section anchor for the requests routes. */
 export function requestsHrefFor(context: WorkspaceContext): string {
   return requestsHref(context);
 }

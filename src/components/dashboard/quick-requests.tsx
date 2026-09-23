@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils";
 /**
  * Dashboard quick requests (Phase 2.2).
  *
- * Useful customer actions in customer language. Each links to the future
- * Request experience for the context — the dashboard signposts, it does not
- * implement requesting (Checkpoint 2.3).
+ * Useful customer actions in customer language. Each links to the Requests
+ * list for its context — the dashboard signposts; requesting itself happens
+ * on the per-context requests routes (Checkpoint 2.3).
  */
 export function DashboardQuickRequests({
   requests,
