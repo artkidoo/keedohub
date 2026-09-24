@@ -143,6 +143,12 @@ export const workspaceNav: Record<WorkspaceContext, NavItem[]> = {
       description: "Logos, imagery and reference material you keep and reuse.",
     },
     {
+      label: "My Library",
+      href: `${WORKSPACE_ROOT}/brand/library`,
+      icon: "package",
+      description: "Every finished file KeedoHub has delivered to you.",
+    },
+    {
       label: "My Projects",
       href: `${WORKSPACE_ROOT}/brand/projects`,
       icon: "folder",
@@ -179,6 +185,12 @@ export const workspaceNav: Record<WorkspaceContext, NavItem[]> = {
       href: `${WORKSPACE_ROOT}/artist/assets`,
       icon: "images",
       description: "Artwork, imagery and reference material you keep and reuse.",
+    },
+    {
+      label: "My Library",
+      href: `${WORKSPACE_ROOT}/artist/library`,
+      icon: "package",
+      description: "Every finished file KeedoHub has delivered to you.",
     },
     {
       label: "My Projects",

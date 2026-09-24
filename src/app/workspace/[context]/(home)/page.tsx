@@ -1,4 +1,4 @@
-import { CheckCheck, Disc3, FileText, FolderOpen, Images, Megaphone } from "lucide-react";
+import { CheckCheck, Disc3, FileText, FolderOpen, Images, Megaphone, PackageOpen } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -133,6 +133,11 @@ export default async function WorkspaceContextPage({ params }: ContextPageProps)
       </DashboardSection>
       {/* Artist releases/assets links with real counts (Checkpoint 2.6).
           Additive section only; everything above is untouched. */}
+      {/* Customer Library link for both contexts (Checkpoint 2.7). Additive and
+          count-free: a delivered-file count is deliberately not shown here. */}
+      <DashboardSection labelledBy="library" eyebrow="Your files" title="Delivered files" description="Every finished file KeedoHub has delivered to you, kept in one place." action={{ label: "Open My Library", href: `/workspace/${context}/library` }}>
+        <DashboardSectionEmpty icon={PackageOpen} title="Your delivered files live in My Library" description="When work is delivered, your files are collected there so you can open and download them whenever you need." action={{ label: "Open My Library", href: `/workspace/${context}/library` }} />
+      </DashboardSection>
       {artistOutputs ? (
         <DashboardSection labelledBy="release-library" eyebrow="Your catalog" title="Releases & assets" description="What you have released, and the artwork and files behind it.">
           <DashboardList>
