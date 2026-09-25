@@ -33,7 +33,7 @@ export async function GET(_request: Request, { params }: {
     if (error instanceof StorageError && error.kind === "NotFound") {
       return new Response("Not found", { status: 404 });
     }
-    console.error("Customer download unavailable");
+    console.error("Customer download unavailable:", error);
     return new Response("The file could not be loaded. Please try again.", { status: 503 });
   }
 }

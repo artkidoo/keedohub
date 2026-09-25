@@ -66,7 +66,9 @@ async function submitRequest(
     type: "request_received",
     title: "Request received",
     message: `We have your request “${created.title}”. We will take a look and keep you updated here.`,
-    href: `/requests/${created.id}`,
+    // A customer route inside this context, so the notification is a real link
+    // the customer can follow back to the request they just sent.
+    href: `/workspace/${context}/requests/${created.id}`,
   });
 
   // Fresh data everywhere the new request shows up: its list and the

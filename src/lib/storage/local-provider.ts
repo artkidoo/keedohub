@@ -45,7 +45,12 @@ export function configureLocalProvider(baseDir: string): void {
     throw configurationError("Local storage base directory must be absolute", absolute);
   }
 
-  baseDirectory = absolute;
+  // Normalize the configured base directory to the platform's own form so
+  // the containment check in `resolvePath` compares like with like. A config
+  // value written with forward slashes (e.g. `C:/data/keedohub`) is a valid
+  // absolute path, but it never matches the backslashes Node returns, which
+  // would make every read look like an escape attempt.
+  baseDirectory = normalize(absolute);
 
   if (!existsSync(baseDirectory)) {
     mkdirSync(baseDirectory, { recursive: true });
