@@ -10,13 +10,14 @@ type ShellSidebarProps = {
   items: NavItem[];
   /** Accessible name for the navigation region. */
   navLabel: string;
-  /**
-   * Show the Brand/Artist switcher. True for the customer workspace, false for
+  /** Show the Brand/Artist switcher. True for the customer workspace, false for
    * internal chrome such as the Studio.
    */
   showContextSwitcher?: boolean;
   /** Optional footer content, pinned to the bottom of the rail. */
   footer?: ReactNode;
+  /** Real unread notification count for the current context (see NavList). */
+  unreadNotifications?: number;
   className?: string;
 };
 
@@ -29,6 +30,7 @@ function ShellSidebar({
   navLabel,
   showContextSwitcher = true,
   footer,
+  unreadNotifications,
   className,
 }: ShellSidebarProps) {
   return (
@@ -38,7 +40,11 @@ function ShellSidebar({
     >
       <WordmarkLink className="px-1" />
       {showContextSwitcher ? <ContextSwitcher /> : null}
-      <NavList items={items} label={navLabel} />
+      <NavList
+        items={items}
+        label={navLabel}
+        unreadNotifications={unreadNotifications}
+      />
       {footer ? <div className="mt-auto px-1 pt-6">{footer}</div> : null}
     </div>
   );

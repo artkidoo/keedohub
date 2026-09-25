@@ -29,6 +29,8 @@ type WorkspaceHeaderProps = {
   homeHref?: string;
   /** Slot for notifications and account controls once authentication exists. */
   actions?: ReactNode;
+  /** Real unread notification count for the current context. */
+  unreadNotifications?: number;
   className?: string;
 };
 
@@ -44,6 +46,7 @@ function WorkspaceHeader({
   title,
   homeHref = "/workspace",
   actions,
+  unreadNotifications,
   className,
 }: WorkspaceHeaderProps) {
   const navLabel = contextLabel
@@ -63,6 +66,7 @@ function WorkspaceHeader({
           items={items}
           title={contextLabel ? `${contextLabel} workspace` : "KeedoHub"}
           navLabel={navLabel}
+          unreadNotifications={unreadNotifications}
         />
       ) : null}
 

@@ -658,6 +658,79 @@ export const delivery = pgTable(
   ],
 );
 
+/* -- Notification (Checkpoint 2.8): customer-facing in-app updates ----------- */
+
+/**
+ * Customer notification types.
+ *
+ * Customer vocabulary only — each value is a sentence the customer can read.
+ * Adding a new kind of customer update is additive and never requires an
+ * existing value to change meaning.
+ */
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "request_received",
+  "ready_for_review",
+  "changes_requested",
+  "approved",
+  "work_delivered",
+  "new_files_available",
+  "update",
+]);
+
+/**
+ * One in-app customer notification.
+ *
+ * A notification is a *record of a real event*, never generated to populate a
+ * surface. It is written by the server-side code that performs the customer-
+ * visible event, and is scoped three ways so a customer can never see another
+ * customer's updates:
+ *   - `userId`      — the customer it belongs to
+ *   - `workspaceId` — the workspace that owns the customer (defence in depth:
+ *                     the owner is unique, but the row still carries the FK)
+ *   - `contextType` — Brand or Artist, so context switches never mix them
+ *
+ * `href` is a *customer* route (validated at write time against the context);
+ * it is not a database reference and exposes no internal identifier semantics.
+ * `readAt` is the whole read model: NULL is unread, a timestamp is read. There
+ * is no separate read table, so a read state can never drift from its row.
+ */
+export const notification = pgTable(
+  "notification",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    /** Brand or Artist — notifications never cross the context switch. */
+    contextType: contextTypeEnum("context_type").notNull(),
+    type: notificationTypeEnum("type").notNull(),
+    /** Short, customer-readable headline, e.g. "Your request has been received". */
+    title: text("title").notNull(),
+    /** One or two sentences of plain context. No internal terminology. */
+    message: text("message").notNull(),
+    /** Where the customer goes to see it. NULL when nothing to open yet. */
+    href: text("href"),
+    /** NULL until the customer reads it. */
+    readAt: timestamp("read_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // Serves the notifications list, ordered newest first.
+    index("notification_user_context_created_idx").on(
+      table.userId,
+      table.contextType,
+      table.createdAt,
+    ),
+    // Serves the unread count shown in navigation.
+    index("notification_unread_idx").on(table.userId, table.readAt),
+  ],
+);
+
 /* -- Relations -------------------------------------------------------------- */
 
 export const requestRelations = relations(request, ({ one }) => ({
@@ -762,6 +835,17 @@ export const deliveryRelations = relations(delivery, ({ one }) => ({
   }),
 }));
 
+export const notificationRelations = relations(notification, ({ one }) => ({
+  owner: one(user, {
+    fields: [notification.userId],
+    references: [user.id],
+  }),
+  workspace: one(workspace, {
+    fields: [notification.workspaceId],
+    references: [workspace.id],
+  }),
+}));
+
 /* -- Domain types (database-derived; no duplicate definitions) -------------- */
 
 export type Request = typeof request.$inferSelect;
@@ -778,6 +862,8 @@ export type Review = typeof review.$inferSelect;
 export type NewReview = typeof review.$inferInsert;
 export type Delivery = typeof delivery.$inferSelect;
 export type NewDelivery = typeof delivery.$inferInsert;
+export type Notification = typeof notification.$inferSelect;
+export type NewNotification = typeof notification.$inferInsert;
 
 export type RequestContextType = (typeof contextTypeEnum.enumValues)[number];
 export type RequestStatus = (typeof requestStatusEnum.enumValues)[number];
@@ -786,3 +872,4 @@ export type JobStatus = (typeof jobStatusEnum.enumValues)[number];
 export type DeliverableStatus = (typeof deliverableStatusEnum.enumValues)[number];
 export type AssetCategory = (typeof assetCategoryEnum.enumValues)[number];
 export type ReviewAction = (typeof reviewActionEnum.enumValues)[number];
+export type NotificationType = (typeof notificationTypeEnum.enumValues)[number];

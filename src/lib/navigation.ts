@@ -1,4 +1,5 @@
 import {
+  Bell,
   CircleCheck,
   Disc3,
   FileText,
@@ -38,6 +39,7 @@ export type NavIconName =
   | "palette"
   | "layers"
   | "users"
+  | "bell"
   | "settings";
 
 const navIcons = {
@@ -55,6 +57,7 @@ const navIcons = {
   palette: Palette,
   layers: Layers,
   users: Users,
+  bell: Bell,
   settings: Settings,
 } satisfies Record<NavIconName, LucideIcon>;
 
@@ -160,6 +163,12 @@ export const workspaceNav: Record<WorkspaceContext, NavItem[]> = {
       icon: "send",
       description: "What you have asked for, and where each request is.",
     },
+    {
+      label: "Notifications",
+      href: `${WORKSPACE_ROOT}/brand/notifications`,
+      icon: "bell",
+      description: "What has changed with your brand's creative work.",
+    },
   ],
   artist: [
     {
@@ -203,6 +212,12 @@ export const workspaceNav: Record<WorkspaceContext, NavItem[]> = {
       href: `${WORKSPACE_ROOT}/artist/requests`,
       icon: "send",
       description: "What you have asked for, and where each request is.",
+    },
+    {
+      label: "Notifications",
+      href: `${WORKSPACE_ROOT}/artist/notifications`,
+      icon: "bell",
+      description: "What has changed with your creative work.",
     },
   ],
 };

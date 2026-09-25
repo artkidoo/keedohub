@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { requireWorkspaceContext } from "@/domains/workspace/access";
 import { WorkspaceShell } from "@/components/layout/workspace-shell";
+import { countUnreadNotifications } from "@/domains/notifications/data";
 
 type LayoutProps = {
   children: ReactNode;
@@ -27,7 +28,18 @@ export default async function WorkspaceContextLayout({
     notFound();
   }
 
-  await requireWorkspaceContext(context, `/workspace/${context}`);
+  const access = await requireWorkspaceContext(context, `/workspace/${context}`);
 
-  return <WorkspaceShell context={context}>{children}</WorkspaceShell>;
+  // The unread marker is part of the shell, so the count is resolved once here
+  // for the current context. It is scoped to the session-derived user, owned
+  // workspace and context exactly like the list itself (spec §20.2), so it can
+  // never show another customer's notifications, and it is a real database
+  // count — never a fabricated number.
+  const unreadNotifications = await countUnreadNotifications(access, context);
+
+  return (
+    <WorkspaceShell context={context} unreadNotifications={unreadNotifications}>
+      {children}
+    </WorkspaceShell>
+  );
 }

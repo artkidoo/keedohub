@@ -21,6 +21,8 @@ type MobileNavProps = {
   title: string;
   /** Accessible name for the navigation region. */
   navLabel: string;
+  /** Real unread notification count for the current context. */
+  unreadNotifications?: number;
 };
 
 /**
@@ -28,7 +30,7 @@ type MobileNavProps = {
  * mobile and desktop — the items, labels, active states and ordering all come
  * from one configuration (spec §9).
  */
-function MobileNav({ items, title, navLabel }: MobileNavProps) {
+function MobileNav({ items, title, navLabel, unreadNotifications }: MobileNavProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -53,6 +55,7 @@ function MobileNav({ items, title, navLabel }: MobileNavProps) {
             items={items}
             label={navLabel}
             onNavigate={() => setOpen(false)}
+            unreadNotifications={unreadNotifications}
           />
         </div>
       </SheetContent>

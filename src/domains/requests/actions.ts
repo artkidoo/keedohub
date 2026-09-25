@@ -14,6 +14,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { recordNotification } from "@/domains/notifications/data";
 import { requireWorkspaceContext } from "@/domains/workspace/access";
 import type { WorkspaceContext } from "@/lib/navigation";
 import { createRequestForContext } from "./data";
@@ -54,11 +55,26 @@ async function submitRequest(
     return failedRequestState(parsed.raw);
   }
 
+  // A real customer-facing event has now happened, so it can honestly appear in
+  // Notifications (Checkpoint 2.8). This is the one event that already exists in
+  // the architecture without any Phase 3 workflow infrastructure: the customer
+  // submitted the request themselves. Review/approval/delivery events are
+  // recorded by the Studio transitions when those arrive — none are faked here.
+  // `recordNotification` resolves the user and workspace from the session again
+  // and never throws, so a notification can never lose or fail the request.
+  await recordNotification(context, {
+    type: "request_received",
+    title: "Request received",
+    message: `We have your request “${created.title}”. We will take a look and keep you updated here.`,
+    href: `/requests/${created.id}`,
+  });
+
   // Fresh data everywhere the new request shows up: its list and the
   // dashboard active-work section. redirect() throws, so it stays outside
   // the try/catch above (spec §7, Next.js redirect behaviour).
   revalidatePath(listPath);
   revalidatePath(`/workspace/${context}`);
+  revalidatePath(`/workspace/${context}/notifications`);
   redirect(`${listPath}/${created.id}`);
 }
 

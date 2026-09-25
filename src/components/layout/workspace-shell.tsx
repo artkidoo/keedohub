@@ -16,6 +16,12 @@ type WorkspaceShellProps = {
   pageTitle?: string;
   /** Header actions slot (reserved for notifications and account). */
   actions?: ReactNode;
+  /**
+   * Real unread notification count for this context, resolved from the session
+   * by the workspace layout. Omitted means "unknown" and the marker is hidden
+   * rather than guessed.
+   */
+  unreadNotifications?: number;
   children: ReactNode;
 };
 
@@ -30,6 +36,7 @@ function WorkspaceShell({
   context,
   pageTitle,
   actions,
+  unreadNotifications,
   children,
 }: WorkspaceShellProps) {
   const meta = context ? getContextMeta(context) : undefined;
@@ -45,11 +52,16 @@ function WorkspaceShell({
           title={pageTitle}
           homeHref={meta?.href}
           actions={actions}
+          unreadNotifications={unreadNotifications}
         />
       }
       sidebar={
         items.length > 0 ? (
-          <ShellSidebar items={items} navLabel={navLabel} />
+          <ShellSidebar
+          items={items}
+          navLabel={navLabel}
+          unreadNotifications={unreadNotifications}
+        />
         ) : undefined
       }
     >
