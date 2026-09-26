@@ -36,6 +36,13 @@
       "when": 1790288535206,
       "tag": "0004_sweet_kabuki",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790382038877,
+      "tag": "0005_nostalgic_network",
+      "breakpoints": true
     }
   ]
 }

@@ -83,6 +83,51 @@ export const verification = pgTable("verification", {
 });
 
 /* ==========================================================================
+   Internal production operators (Phase 3.0)
+   The private production workflow belongs to KeedoHub staff, not to the
+   customers who use the workspace shell. An operator row is what makes a
+   login a staff login: the session proves *who*, this table proves *what they
+   may reach* (spec §19.2 — a role kept only in a client token, an environment
+   flag or a hidden button is not authorisation).
+   A user may be an operator and a customer at the same time; nothing here
+   grants a customer access to anybody else's workspace.
+   ========================================================================== */
+
+/**
+ * Internal operator roles (spec §19.3).
+ *
+ * Deliberately minimal: `operator` reaches production data, `owner`
+ * additionally administers operator access itself. No permission system is
+ * built beyond this, because none is needed yet.
+ */
+export const operatorRoleEnum = pgEnum("operator_role", ["operator", "owner"]);
+
+export const operator = pgTable(
+  "operator",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    /** The authenticated account this operator record belongs to. */
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    role: operatorRoleEnum("role").notNull().default("operator"),
+    /** Human label for internal surfaces. Never rendered to a customer. */
+    displayName: text("display_name"),
+    /** Revoking access is a state change, not a delete: history stays intact. */
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // One operator record per account: a duplicate would make "who acted"
+    // ambiguous, and §19.4 requires attributable actions.
+    uniqueIndex("operator_user_id_unique").on(table.userId),
+    index("operator_active_idx").on(table.active),
+  ],
+);
+
+/* ==========================================================================
    KeedoHub domain foundation
    user → workspace → brand/artist context. Every future query resolves
    through this chain (spec §8, §20).
@@ -341,6 +386,16 @@ export const jobStatusEnum = pgEnum("job_status", [
   "delivered",
 ]);
 
+/**
+ * Production priority bounds (spec §10.3).
+ *
+ * Lower numbers are more urgent. Held as a bounded integer with a database
+ * check constraint rather than an enum, so the range is enforced at the
+ * boundary and adding a level never rewrites an existing value.
+ */
+export const PRODUCTION_PRIORITY_MIN = 0;
+export const PRODUCTION_PRIORITY_MAX = 100;
+
 /** Deliverable status, derived from its job (spec §11.2). */
 export const deliverableStatusEnum = pgEnum("deliverable_status", [
   "in_production",
@@ -495,12 +550,67 @@ export const productionJob = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => project.id, { onDelete: "cascade" }),
+    /**
+     * The customer context this job serves (Phase 3.0).
+     *
+     * A job is internal, but the customer behind it is not: carrying the
+     * context on the job means every read can be narrowed by it and a job can
+     * never be attributed to the wrong half of a workspace. The same
+     * exclusivity rule the request and project tables carry applies here
+     * (spec §10, §20.2).
+     */
+    contextType: contextTypeEnum("context_type").notNull(),
+    brandProfileId: uuid("brand_profile_id").references(() => brandProfile.id, {
+      onDelete: "cascade",
+    }),
+    artistProfileId: uuid("artist_profile_id").references(
+      () => artistProfile.id,
+      { onDelete: "cascade" },
+    ),
+    /**
+     * The request this job fulfils, when it came from one.
+     *
+     * Redundant with the project's `request_id` on purpose: the production
+     * chain stays queryable end-to-end from the job alone, and both are
+     * written together by the same server call so they cannot disagree.
+     */
+    requestId: uuid("request_id").references(() => request.id, {
+      onDelete: "set null",
+    }),
+    /** Internal working title. Never rendered on a customer surface. */
+    title: text("title").notNull(),
+    /** Internal notes. Never rendered on a customer surface. */
+    description: text("description"),
+    /**
+     * What kind of production this is, e.g. "cover_artwork", "social_kit",
+     * "document". Extensible text so a new kind never needs a migration.
+     */
+    productionType: text("production_type").notNull(),
     /** Internal queue state (spec §10.3). Internal vocabulary only. */
     status: jobStatusEnum("status").notNull().default("incoming"),
+    /**
+     * Queue urgency: 0 is most urgent. Bounded by the database, so a bad
+     * write is refused at the boundary rather than trusted from the caller.
+     */
+    priority: integer("priority").notNull().default(50),
     /** Structured production instructions assembled during briefing. */
     brief: jsonb("brief"),
     /** Operator attribution (PLANNED). Not a customer concept. */
     assignedTo: text("assigned_to"),
+    /**
+     * The operator this job is assigned to (Phase 3.0).
+     *
+     * Distinct from the legacy `assigned_to` text: this is a real foreign
+     * key, so "who is working on this" is answered by the database rather
+     * than by a string a caller can invent. Null means unassigned.
+     */
+    assignedOperatorId: uuid("assigned_operator_id").references(() => operator.id, {
+      onDelete: "set null",
+    }),
+    /** When real work started. Null while queued or still in briefing. */
+    startedAt: timestamp("started_at"),
+    /** When the job reached a terminal state. Null while it is still open. */
+    completedAt: timestamp("completed_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -508,6 +618,30 @@ export const productionJob = pgTable(
     index("production_job_workspace_id_idx").on(table.workspaceId),
     index("production_job_project_id_idx").on(table.projectId),
     index("production_job_status_idx").on(table.status),
+    // The queue is read by context, state, urgency and age together, so they
+    // are indexed together rather than one index per column.
+    index("production_job_queue_idx").on(
+      table.contextType,
+      table.status,
+      table.priority,
+      table.createdAt,
+    ),
+    index("production_job_assigned_operator_id_idx").on(table.assignedOperatorId),
+    index("production_job_request_id_idx").on(table.requestId),
+    check(
+      "production_job_context_exclusive",
+      sql`(${table.brandProfileId} is null) <> (${table.artistProfileId} is null)`,
+    ),
+    check(
+      "production_job_context_matches",
+      sql`(${table.contextType} = 'brand' and ${table.brandProfileId} is not null)
+       or (${table.contextType} = 'artist' and ${table.artistProfileId} is not null)`,
+    ),
+    check(
+      "production_job_priority_range",
+      sql`${table.priority} >= ${sql.raw(String(PRODUCTION_PRIORITY_MIN))}
+       and ${table.priority} <= ${sql.raw(String(PRODUCTION_PRIORITY_MAX))}`,
+    ),
   ],
 );
 
@@ -543,6 +677,78 @@ export const deliverable = pgTable(
     index("deliverable_project_id_idx").on(table.projectId),
     index("deliverable_job_id_idx").on(table.jobId),
     index("deliverable_status_idx").on(table.status),
+  ],
+);
+
+/* -- Deliverable version (Phase 3.0): one immutable production version ------ */
+
+/**
+ * A version of a deliverable.
+ *
+ * Versions are recorded, never overwritten (spec §11.2, §12.3): a revision
+ * creates a new row. `isCurrent` marks the live version and `supersededAt`
+ * records when it stopped being live, so "what the customer is currently
+ * looking at" and "what it replaced" are both answerable without guessing
+ * from an ordering.
+ *
+ * Customer visibility is unchanged by this table: the Phase 2 Library rules
+ * (customer flag + customer categories + `asset.version` matching
+ * `deliverable.current_version` + a matching delivery row) remain the only
+ * thing that makes a file visible to a customer.
+ */
+export const deliverableVersion = pgTable(
+  "deliverable_version",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspace.id, { onDelete: "cascade" }),
+    deliverableId: uuid("deliverable_id")
+      .notNull()
+      .references(() => deliverable.id, { onDelete: "cascade" }),
+    /** Monotonic per deliverable, starting at 1. */
+    version: integer("version").notNull(),
+    /**
+     * The file that carries this version, when one has been attached. Null is
+     * honest: a version can be opened before its file arrives.
+     */
+    assetId: uuid("asset_id").references(() => asset.id, {
+      onDelete: "set null",
+    }),
+    /** Internal note about what changed. Never rendered to a customer. */
+    note: text("note"),
+    /** The operator who created this version, when it is known. */
+    createdByOperatorId: uuid("created_by_operator_id").references(
+      () => operator.id,
+      { onDelete: "set null" },
+    ),
+    isCurrent: boolean("is_current").notNull().default(true),
+    /** When this version stopped being current. Null while it is current. */
+    supersededAt: timestamp("superseded_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => [
+    // One row per version number per deliverable.
+    uniqueIndex("deliverable_version_deliverable_version_unique").on(
+      table.deliverableId,
+      table.version,
+    ),
+    // At most one current version per deliverable.
+    uniqueIndex("deliverable_version_current_unique")
+      .on(table.deliverableId)
+      .where(sql`${table.isCurrent}`),
+    index("deliverable_version_workspace_id_idx").on(table.workspaceId),
+    index("deliverable_version_asset_id_idx").on(table.assetId),
+    check("deliverable_version_positive", sql`${table.version} > 0`),
+    // A superseded version must say when it was superseded, and a current one
+    // must not pretend to have been.
+    check(
+      "deliverable_version_current_state",
+      sql`(${table.isCurrent} and ${table.supersededAt} is null)
+       or (not ${table.isCurrent} and ${table.supersededAt} is not null)`,
+    ),
   ],
 );
 
@@ -789,9 +995,39 @@ export const deliverableRelations = relations(deliverable, ({ one, many }) => ({
     fields: [deliverable.jobId],
     references: [productionJob.id],
   }),
+  versions: many(deliverableVersion),
   reviews: many(review),
   deliveries: many(delivery),
   assets: many(asset),
+}));
+
+export const deliverableVersionRelations = relations(
+  deliverableVersion,
+  ({ one }) => ({
+    workspace: one(workspace, {
+      fields: [deliverableVersion.workspaceId],
+      references: [workspace.id],
+    }),
+    deliverable: one(deliverable, {
+      fields: [deliverableVersion.deliverableId],
+      references: [deliverable.id],
+    }),
+    asset: one(asset, {
+      fields: [deliverableVersion.assetId],
+      references: [asset.id],
+    }),
+    createdBy: one(operator, {
+      fields: [deliverableVersion.createdByOperatorId],
+      references: [operator.id],
+    }),
+  }),
+);
+
+export const operatorRelations = relations(operator, ({ one }) => ({
+  user: one(user, {
+    fields: [operator.userId],
+    references: [user.id],
+  }),
 }));
 
 export const assetRelations = relations(asset, ({ one }) => ({
@@ -856,6 +1092,10 @@ export type ProductionJob = typeof productionJob.$inferSelect;
 export type NewProductionJob = typeof productionJob.$inferInsert;
 export type Deliverable = typeof deliverable.$inferSelect;
 export type NewDeliverable = typeof deliverable.$inferInsert;
+export type DeliverableVersion = typeof deliverableVersion.$inferSelect;
+export type NewDeliverableVersion = typeof deliverableVersion.$inferInsert;
+export type Operator = typeof operator.$inferSelect;
+export type NewOperator = typeof operator.$inferInsert;
 export type Asset = typeof asset.$inferSelect;
 export type NewAsset = typeof asset.$inferInsert;
 export type Review = typeof review.$inferSelect;
@@ -873,3 +1113,4 @@ export type DeliverableStatus = (typeof deliverableStatusEnum.enumValues)[number
 export type AssetCategory = (typeof assetCategoryEnum.enumValues)[number];
 export type ReviewAction = (typeof reviewActionEnum.enumValues)[number];
 export type NotificationType = (typeof notificationTypeEnum.enumValues)[number];
+export type OperatorRole = (typeof operatorRoleEnum.enumValues)[number];
