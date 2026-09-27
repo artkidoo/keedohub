@@ -911,6 +911,21 @@ export const review = pgTable(
 
 /* -- Delivery (§14): finalises approved work into the customer's library --- */
 
+/**
+ * One delivery: the exact version of a deliverable that was formally handed to
+ * the customer, together with the exact file that was handed over.
+ *
+ * Phase 3.2 makes this row the single point of truth for "this work is
+ * finished". It is created only by an operator, only from an approved review of
+ * the CURRENT version, and it is never edited afterwards — the version, the file
+ * and the moment are the historical record, and the customer Library is derived
+ * from this row rather than from a second source (spec §14).
+ *
+ * `context_type`, `job_id` and `asset_id` are inherited from the job and the
+ * current version at write time — never from a request — so a delivery can never
+ * disagree with the chain it belongs to, and so every read can be narrowed by
+ * context, by job, or straight to the delivered file.
+ */
 export const delivery = pgTable(
   "delivery",
   {
@@ -920,20 +935,53 @@ export const delivery = pgTable(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspace.id, { onDelete: "cascade" }),
+    /** Brand or Artist (Phase 3.2): the context this delivery belongs to. */
+    contextType: contextTypeEnum("context_type").notNull(),
     projectId: uuid("project_id")
       .notNull()
       .references(() => project.id, { onDelete: "cascade" }),
+    /** The production job that produced the work (Phase 3.2). */
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => productionJob.id, { onDelete: "cascade" }),
     deliverableId: uuid("deliverable_id")
       .notNull()
       .references(() => deliverable.id, { onDelete: "cascade" }),
     /** The version that was delivered; delivered work is immutable (§14.2). */
     version: integer("version").notNull(),
+    /**
+     * The exact file handed to the customer (Phase 3.2).
+     *
+     * Recorded at delivery time rather than derived later, so "which file did
+     * they receive" is answered by the record itself even if a newer version is
+     * ever produced. A delivery always points at a real, customer-visible file.
+     */
+    assetId: uuid("asset_id").references(() => asset.id, { onDelete: "set null" }),
+    /** Which operator performed the delivery. Internal attribution, never shown. */
+    deliveredByOperatorId: uuid("delivered_by_operator_id").references(
+      () => operator.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
     index("delivery_workspace_id_idx").on(table.workspaceId),
     index("delivery_project_id_idx").on(table.projectId),
     index("delivery_deliverable_id_idx").on(table.deliverableId),
+    // Serves every read scoped by context, and the customer's own library.
+    index("delivery_workspace_context_idx").on(
+      table.workspaceId,
+      table.contextType,
+    ),
+    index("delivery_job_id_idx").on(table.jobId),
+    index("delivery_asset_id_idx").on(table.assetId),
+    // Exactly one delivery per deliverable, enforced by the database. This is
+    // the idempotency guarantee: a repeated or concurrent "deliver" can never
+    // create a second record, a second Library entry or a second notification
+    // (spec §14.2, §19.4).
+    uniqueIndex("delivery_deliverable_unique").on(table.deliverableId),
+    check("delivery_version_positive", sql`${table.version} > 0`),
   ],
 );
 

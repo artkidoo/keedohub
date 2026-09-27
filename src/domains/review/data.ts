@@ -44,6 +44,7 @@ import type { WorkspaceContextAccess } from "@/domains/workspace/access";
 import { getDb } from "@/lib/db";
 import {
   deliverable,
+  delivery,
   productionJob,
   project,
   request,
@@ -153,6 +154,19 @@ export type ReviewableWork = {
   canReview: boolean;
   /** Older reviews, newest first — the record of how the work evolved. */
   history: CustomerReview[];
+  /**
+   * The delivery, when this version has been formally delivered.
+   *
+   * Present only when a real delivery row exists for this deliverable at its
+   * current version — the same row the customer's Library is derived from, so
+   * "your work is in your library" can never be shown without one (spec §14).
+   */
+  delivery: {
+    version: number;
+    /** The exact delivered file, for a direct link to its Library page. */
+    assetId: string | null;
+    deliveredAt: Date;
+  } | null;
 };
 
 function toCustomerReview(row: Review): CustomerReview {
@@ -218,6 +232,26 @@ export async function getReviewableWork(
     requestContext = source ?? null;
   }
 
+  // The delivery, read under the same workspace + context scope. A delivery of
+  // any other version, any other workspace or the other context matches nothing,
+  // so the customer can only ever be told about their own delivered work.
+  const [delivered] = await getDb()
+    .select({
+      version: delivery.version,
+      assetId: delivery.assetId,
+      createdAt: delivery.createdAt,
+    })
+    .from(delivery)
+    .where(
+      and(
+        eq(delivery.workspaceId, access.workspace.id),
+        eq(delivery.contextType, context),
+        eq(delivery.deliverableId, work.id),
+        eq(delivery.version, work.version),
+      ),
+    )
+    .limit(1);
+
   return {
     id: work.id,
     name: work.name,
@@ -229,6 +263,13 @@ export async function getReviewableWork(
     currentReview: currentReview ? toCustomerReview(currentReview) : null,
     canReview,
     history: rows.map(toCustomerReview),
+    delivery: delivered
+      ? {
+          version: delivered.version,
+          assetId: delivered.assetId,
+          deliveredAt: delivered.createdAt,
+        }
+      : null,
   };
 }
 

@@ -56,6 +56,22 @@ export const feedbackHelp =
 export const feedbackRequiredMessage =
   "Please tell us what you would like changed before sending your request.";
 
+/**
+ * What the customer sees once the work has been delivered (Phase 3.2).
+ *
+ * Reassuring, plain, and free of workflow language: the customer did the
+ * approving, KeedoHub did the delivering, and the next thing they can do is
+ * download the finished files (spec §8, §24).
+ */
+export const deliveredCopy = {
+  title: "Delivered",
+  body: "This work has been delivered. Your finished files are in your Library, ready to download whenever you need them.",
+  /** The link text on the work itself. */
+  libraryLink: "View delivered work",
+  /** The section heading on the work page once delivered. */
+  filesHeading: "Your delivered files",
+} as const;
+
 /** UTC-stable timestamp formatting, matching the notifications surface. */
 export function formatReviewTime(value: Date): string {
   const iso = value.toISOString();

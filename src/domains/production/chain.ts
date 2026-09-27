@@ -43,6 +43,18 @@ import type { JobStatus, ProductionJob, Project } from "@/lib/db/schema";
 export { ProductionError } from "./errors";
 
 /**
+ * The subset of the database client a production write needs.
+ *
+ * Both the main client and an open transaction satisfy it, which is what lets
+ * `applyJobTransition` (and Phase 3.2 delivery) run inside a caller's
+ * transaction without either side needing to know which one it has.
+ */
+export type DeliveryExecutor = Pick<
+  ReturnType<typeof getDb>,
+  "update" | "select" | "insert"
+>;
+
+/**
  * The chain and the review record are written by two different principals — an
  * operator moves a job, a customer decides on a review — and both need to raise
  * and read the same failure vocabulary. It lives in its own module so neither
@@ -292,14 +304,20 @@ export async function transitionJob(
  * Both the operator transition and the customer's review decision go through
  * here, so the lifecycle guard, the timestamps, the derived project status and
  * the derived deliverable statuses can never disagree with each other
- * (spec §9.4, §11.2, §10.4 rule 3).
+ * (spec §9.4, §11.2, §10.4 rule 3). Phase 3.2 delivery uses the same path inside
+ * its own transaction, so a delivery and the states that describe it are written
+ * together or not at all.
  *
  * It performs no authorisation and no notification: the caller has already
  * proved who is acting, and is responsible for the event it is causing.
+ *
+ * `executor` defaults to the main database client; passing a transaction makes
+ * every write in this call part of that transaction.
  */
 export async function applyJobTransition(
   job: ProductionJob,
   next: JobStatus,
+  executor: DeliveryExecutor = getDb(),
 ): Promise<ProductionJob> {
   if (!canTransition(job.status, next)) {
     throw new ProductionError(
@@ -308,7 +326,7 @@ export async function applyJobTransition(
     );
   }
 
-  const db = getDb();
+  const db = executor;
   const now = new Date();
 
   const [updated] = await db

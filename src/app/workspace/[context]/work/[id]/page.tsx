@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { getWork, listWorkFiles } from "@/domains/dashboard/queries";
 import { deliverableStatusLabels } from "@/domains/production/status";
 import { getReviewableWork } from "@/domains/review/data";
+import { deliveredCopy } from "@/domains/review/presentation";
 import { ReviewPanel } from "@/domains/review/review-panel";
 import { requireWorkspaceContext } from "@/domains/workspace/access";
 import { isWorkspaceContext } from "@/lib/navigation";
@@ -77,7 +78,9 @@ export default async function WorkPage({ params }: {
 
         <section aria-labelledby="work-files" className="flex min-w-0 flex-col gap-5">
           <h2 id="work-files" className="text-section">
-            Files shared with you
+            {reviewable.delivery
+              ? deliveredCopy.filesHeading
+              : "Files shared with you"}
           </h2>
           {files.length ? (
             <ul className="divide-y divide-border border-y border-border">

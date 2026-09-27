@@ -30,6 +30,8 @@ export class ProductionError extends Error {
       | "not_reviewable"
       /** The internal QA gate is not satisfied, so work is not ready. */
       | "not_ready"
+      /** Delivery preconditions are not met (Phase 3.2). */
+      | "not_deliverable"
       /** The write would contradict existing state (duplicate, stale, …). */
       | "conflict",
   ) {

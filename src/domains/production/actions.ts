@@ -25,6 +25,9 @@ import {
   createProjectFromRequest,
   transitionJob,
 } from "./chain";
+import { deliverApprovedWork } from "./delivery";
+import { deliveryRefusalLabels } from "./delivery-state";
+import { ProductionError } from "./errors";
 import { isJobStatus } from "./lifecycle";
 import { createDeliverableForJob, produceVersion, updateDeliverable } from "./output";
 import { failedProductionState, type ProductionState } from "./state";
@@ -237,6 +240,54 @@ export async function produceVersionAction(
 
   refreshProduction();
   return { status: "idle", message: null, fieldErrors: {} };
+}
+
+/**
+ * Deliver approved work to the customer (Phase 3.2).
+ *
+ * Delivery is an operator action and nothing else. The customer can approve
+ * work, but approval is not delivery: the customer never triggers this, and a
+ * form replayed by a customer changes nothing because `requireOperator` runs
+ * first (spec §14.2 rule 1, §19.4).
+ *
+ * A repeat is not an error: the delivery function returns the existing delivery,
+ * so a double-clicked button cannot create a second record or a second customer
+ * notification.
+ */
+export async function deliverWorkAction(
+  _previous: ProductionState,
+  formData: FormData,
+): Promise<ProductionState> {
+  const access = await requireOperator();
+  const deliverableId = formData.get("deliverableId");
+
+  if (typeof deliverableId !== "string" || !isValidUUIDv4(deliverableId)) {
+    return failedProductionState();
+  }
+
+  try {
+    await deliverApprovedWork(access, deliverableId);
+  } catch (error) {
+    console.error("Delivery refused:", error);
+    return {
+      status: "error",
+      message:
+        error instanceof ProductionError
+          ? deliveryRefusalMessage(error.message)
+          : "The work could not be delivered. Nothing was changed.",
+      fieldErrors: {},
+    };
+  }
+
+  refreshProduction();
+  return { status: "idle", message: null, fieldErrors: {} };
+}
+
+/** Turn an internal refusal into a sentence an operator can act on. */
+function deliveryRefusalMessage(message: string): string {
+  const reason = message.split(": ").pop() ?? message;
+  const label = (deliveryRefusalLabels as Record<string, string>)[reason];
+  return label ? `This work cannot be delivered: ${label}` : message;
 }
 
 /**

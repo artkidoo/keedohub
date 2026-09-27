@@ -6,9 +6,16 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { requireOperator } from "@/domains/production/access";
+import { deliveryReadinessFor, listDeliveriesForJob } from "@/domains/production/delivery";
 import { DeliverableForm } from "@/domains/production/deliverable-form";
 import { JobControls, jobStatusLabels } from "@/domains/production/job-controls";
-import { DeliverableCard, JobSummary, QaCard, RequestCard } from "@/domains/production/job-view";
+import {
+  DeliverableCard,
+  DeliveryCard,
+  JobSummary,
+  QaCard,
+  RequestCard,
+} from "@/domains/production/job-view";
 import { listJobDeliverables, qaReadiness } from "@/domains/production/qa";
 import { getJobRequest, getProductionJob, listActiveOperators } from "@/domains/production/queue";
 import { listReviewsForDeliverable } from "@/domains/production/review";
@@ -24,9 +31,30 @@ function versionBlocker(status: string): string | undefined {
     return "This work is with the customer for review. A new version can only be produced after that review is decided.";
   }
   if (status === "delivered") {
-    return "Delivered work is immutable. New work is a new job.";
+    return "This work has been delivered. Delivered work is final, so new work is a new job.";
   }
   return undefined;
+}
+
+/**
+ * The approval facts the delivery panel shows, taken from the same loaded
+ * context the gate used (Phase 3.2) — never re-queried and never taken from the
+ * form.
+ */
+function deliveryContextOf(entry: {
+  context: {
+    reviewStatus: string | null;
+    reviewedVersion: number | null;
+    version: { assetId: string | null } | null;
+  } | null;
+}) {
+  if (!entry.context) return null;
+  return {
+    approved: entry.context.reviewStatus === "approved",
+    reviewStatus: entry.context.reviewStatus,
+    reviewedVersion: entry.context.reviewedVersion,
+    assetId: entry.context.version?.assetId ?? null,
+  };
 }
 
 /**
@@ -66,6 +94,14 @@ export default async function ProductionJobPage({
   const reviewsByDeliverable = await Promise.all(
     deliverables.map((item) => listReviewsForDeliverable(access, item.id)),
   );
+
+  // Phase 3.2: the delivery facts for each deliverable, read through the same
+  // gate the delivery action itself uses, so the operator sees the real reason
+  // before pressing the button rather than after failing.
+  const deliveryByDeliverable = await Promise.all(
+    deliverables.map((item) => deliveryReadinessFor(access, item.id)),
+  );
+  const deliveriesByDeliverable = await listDeliveriesForJob(access, job.id);
 
   return (
     <Container className="flex min-w-0 flex-col gap-8 py-8 [overflow-wrap:anywhere] sm:py-12">
@@ -127,6 +163,17 @@ export default async function ProductionJobPage({
                     versions={versions}
                     reviews={reviewsByDeliverable[index]}
                   >
+                    <DeliveryCard
+                      deliverableId={item.id}
+                      version={item.currentVersion}
+                      readiness={deliveryByDeliverable[index].readiness}
+                      context={deliveryContextOf(deliveryByDeliverable[index])}
+                      delivery={
+                        deliveriesByDeliverable.find(
+                          (entry) => entry.deliverableId === item.id,
+                        ) ?? null
+                      }
+                    />
                     <VersionForm
                       deliverableId={item.id}
                       nextVersion={nextVersion}

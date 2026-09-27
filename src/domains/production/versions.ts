@@ -64,6 +64,10 @@ export async function createDeliverableVersion(
   // version they have not decided on. Refusing here keeps a released version
   // stable: replacing the file underneath an open review would silently answer a
   // question the customer is still asking (spec §13.1, §11.3).
+  //
+  // Delivered work is stronger still: it is immutable for good, and a later
+  // change is new work on a new job, never a new version of this one
+  // (spec §14.2 rule 3, §12.3 rule 1).
   const [job] = await db
     .select({ status: productionJob.status })
     .from(productionJob)
@@ -73,6 +77,13 @@ export async function createDeliverableVersion(
   if (job?.status === "customer_review") {
     throw new ProductionError(
       "This work is with the customer for review; a new version can only be produced after the review is decided",
+      "conflict",
+    );
+  }
+
+  if (job?.status === "delivered") {
+    throw new ProductionError(
+      "This work has been delivered and its record is permanent; new work is a new job",
       "conflict",
     );
   }

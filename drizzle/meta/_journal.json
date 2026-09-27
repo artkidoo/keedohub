@@ -50,6 +50,13 @@
       "when": 1790513223464,
       "tag": "0006_quiet_felicia_hardy",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790527298038,
+      "tag": "0007_wild_loa",
+      "breakpoints": true
     }
   ]
 }

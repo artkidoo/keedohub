@@ -11,6 +11,8 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DeliveryButton } from "./delivery-button";
+import { deliveryRefusalLabels, type DeliveryReadiness, type DeliveryRefusal } from "./delivery-state";
 import type { QaFinding } from "./qa";
 import type {
   DeliverableStatus,
@@ -262,6 +264,89 @@ export function ReviewRecord({ reviews }: { reviews: Review[] }) {
           No review has been opened. A review is created when this work is
           released to the customer.
         </p>
+      )}
+    </div>
+  );
+}
+
+/** Internal wording for a refusal, used only on the private production surface. */
+function deliveryRefusalCopy(reason: DeliveryRefusal | undefined): string {
+  return reason ? deliveryRefusalLabels[reason] : "This work cannot be delivered yet";
+}
+
+/**
+ * The delivery panel for one deliverable (Phase 3.2).
+ *
+ * Answers the three questions an operator has before pressing the button — has
+ * the customer approved, which version, and what will be delivered — and shows
+ * the real reason when delivery is not yet possible. The decision itself is the
+ * `DeliveryButton` form, which posts to the server action and is re-checked
+ * there.
+ */
+export function DeliveryCard({
+  deliverableId,
+  version,
+  readiness,
+  context,
+  delivery: made,
+}: {
+  deliverableId: string;
+  /** The current version — the only version that could ever be delivered. */
+  version: number;
+  readiness: DeliveryReadiness;
+  context: {
+    approved: boolean;
+    reviewStatus: string | null;
+    reviewedVersion: number | null;
+    assetId: string | null;
+  } | null;
+  delivery: {
+    version: number;
+    assetId: string | null;
+    createdAt: Date;
+  } | null;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <h3 className="text-sm font-medium text-foreground">Delivery</h3>
+
+      {made ? (
+        <div className="flex flex-col gap-1">
+          <p className="text-sm text-foreground">
+            {`Delivered version ${made.version} to the customer on ${formatInstant(made.createdAt)}.`}
+          </p>
+          <p className="text-meta text-muted-foreground">
+            The delivered file is now in the customer&rsquo;s Library. This record
+            is final and cannot be edited.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-col gap-1">
+            <p className="text-sm break-words text-foreground">
+              {context?.approved
+                ? `Customer approved version ${context.reviewedVersion}.`
+                : "The customer has not approved this work yet."}
+            </p>
+            <p className="text-meta break-words text-muted-foreground">
+              {`Current version: ${version}. ${
+                context?.assetId
+                  ? "A customer-visible file is attached to it."
+                  : "No customer-visible file is attached to it yet."
+              }`}
+            </p>
+          </div>
+
+          {readiness.ready ? (
+            <DeliveryButton deliverableId={deliverableId} version={version} />
+          ) : (
+            <p className="text-meta text-muted-foreground">
+              {`Cannot deliver yet: ${deliveryRefusalCopy(
+                readiness.reason ?? "",
+              ).toLowerCase()}.`}
+            </p>
+          )}
+        </>
       )}
     </div>
   );

@@ -12,7 +12,10 @@
  * (spec §24).
  */
 
+import Link from "next/link";
+
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -23,12 +26,14 @@ import {
 import type { ReviewableWork } from "./data";
 import { ReviewActions } from "./review-actions";
 import {
+  deliveredCopy,
   formatReviewTime,
   reviewPanelBody,
   reviewPanelTitle,
 } from "./presentation";
 import type { ReviewStatus } from "@/lib/db/schema";
 import type { WorkspaceContext } from "@/lib/navigation";
+import { cn } from "@/lib/utils";
 
 /** Which badge tone suits a review state, without inventing a status. */
 function badgeVariant(status: ReviewStatus) {
@@ -51,6 +56,10 @@ export function ReviewPanel({
   // at all falls back to the "not yet" wording.
   const decided =
     reviewStatus === "approved" || reviewStatus === "changes_requested";
+  // Delivery is a real row, read under this customer's own scope. Nothing here
+  // is inferred from a status: if there is no delivery, the work is not delivered
+  // as far as this customer is concerned (spec §14.2 rule 5).
+  const isDelivered = work.delivery !== null;
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -59,7 +68,9 @@ export function ReviewPanel({
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
             <div className="flex min-w-0 flex-col gap-1">
               <CardTitle>
-                {reviewPanelTitle(reviewStatus)}
+                {isDelivered
+                  ? deliveredCopy.title
+                  : reviewPanelTitle(reviewStatus)}
               </CardTitle>
               <CardDescription>
                 {`You are reviewing version ${work.version}.`}
@@ -74,10 +85,38 @@ export function ReviewPanel({
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
           <p className="max-w-prose text-sm leading-relaxed text-muted-foreground">
-            {reviewPanelBody(reviewStatus)}
+            {isDelivered ? deliveredCopy.body : reviewPanelBody(reviewStatus)}
           </p>
 
-          {work.canReview ? (
+          {isDelivered ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-meta text-muted-foreground">
+                {`Delivered ${formatReviewTime(work.delivery!.deliveredAt)}.`}
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {work.delivery?.assetId ? (
+                  <Link
+                    href={`/workspace/${context}/library/${work.delivery.assetId}`}
+                    className={cn(
+                      buttonVariants(),
+                      "w-full sm:w-auto",
+                    )}
+                  >
+                    {deliveredCopy.libraryLink}
+                  </Link>
+                ) : null}
+                <Link
+                  href={`/workspace/${context}/library`}
+                  className={cn(
+                    buttonVariants({ variant: "outline" }),
+                    "w-full sm:w-auto",
+                  )}
+                >
+                  Go to your Library
+                </Link>
+              </div>
+            </div>
+          ) : work.canReview ? (
             <ReviewActions context={context} workId={work.id} />
           ) : (
             <p className="text-sm text-muted-foreground">
