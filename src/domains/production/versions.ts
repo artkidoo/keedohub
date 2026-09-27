@@ -1,23 +1,28 @@
 /**
- * Deliverable versioning (Phase 3.0).
+ * Deliverable versioning (Phase 3.1).
  *
- * Tracks the progression of files attached to a deliverable over its life.
+ * Tracks the progression of files attached to a deliverable over its life,
+ * building on the Phase 3.0 version foundation.
  *
  * Key guarantees:
  *   - Monotonic versioning: each version for a deliverable is version = N + 1.
  *   - Exactly one current version: previous current version is superseded with
  *     a timestamp, satisfying the `deliverable_version_current_state` CHECK.
  *   - Deliverable synchronization: `deliverable.current_version` is kept in
- *     lock-step so customer visibility and delivery logic remain consistent.
+ *     lock-step so customer visibility and review logic remain consistent.
+ *   - History is kept: a superseded version is stored, never deleted, and any
+ *     open review it carried is closed as `superseded` rather than removed
+ *     (spec §11.3, §13.3 rule 4, §20.3).
  *   - Scoped: workspace ownership is verified on both deliverable and asset.
  */
 
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import type { OperatorAccess } from "./access";
-import { ProductionError } from "./chain";
+import { assertOperatorAccess, ProductionError, refuseMalformedId } from "./errors";
+import { supersedeOpenReviews } from "./review";
 import { getDb } from "@/lib/db";
-import { asset, deliverable, deliverableVersion } from "@/lib/db/schema";
+import { asset, deliverable, deliverableVersion, productionJob } from "@/lib/db/schema";
 import type { DeliverableVersion } from "@/lib/db/schema";
 
 /**
@@ -35,9 +40,8 @@ export async function createDeliverableVersion(
     note?: string | null;
   } = {},
 ): Promise<DeliverableVersion> {
-  if (!access?.operatorId || !access.userId) {
-    throw new Error("Production writes require a verified operator");
-  }
+  assertOperatorAccess(access);
+  refuseMalformedId(deliverableId, "Deliverable");
 
   const db = getDb();
 
@@ -45,6 +49,7 @@ export async function createDeliverableVersion(
     .select({
       id: deliverable.id,
       workspaceId: deliverable.workspaceId,
+      jobId: deliverable.jobId,
       currentVersion: deliverable.currentVersion,
     })
     .from(deliverable)
@@ -53,6 +58,23 @@ export async function createDeliverableVersion(
 
   if (!deliv) {
     throw new ProductionError("Deliverable not found", "not_found");
+  }
+
+  // New work is produced in production, not while the customer is looking at a
+  // version they have not decided on. Refusing here keeps a released version
+  // stable: replacing the file underneath an open review would silently answer a
+  // question the customer is still asking (spec §13.1, §11.3).
+  const [job] = await db
+    .select({ status: productionJob.status })
+    .from(productionJob)
+    .where(eq(productionJob.id, deliv.jobId))
+    .limit(1);
+
+  if (job?.status === "customer_review") {
+    throw new ProductionError(
+      "This work is with the customer for review; a new version can only be produced after the review is decided",
+      "conflict",
+    );
   }
 
   if (input.assetId) {
@@ -126,15 +148,29 @@ export async function createDeliverableVersion(
 }
 
 /**
+ * Close the reviews that the new version has overtaken.
+ *
+ * Called by the write path that creates a new version, outside the transaction
+ * so the review rows and the version rows cannot deadlock each other. Reviews
+ * the customer already decided on are never touched: only an open review of an
+ * older version is closed, and it is kept as history (spec §20.3).
+ */
+export async function retireReviewsOvertakenBy(
+  deliverableId: string,
+  currentVersion: number,
+): Promise<number> {
+  return supersedeOpenReviews(deliverableId, currentVersion);
+}
+
+/**
  * List every version of a deliverable in descending version order.
  */
 export async function listDeliverableVersions(
   access: OperatorAccess,
   deliverableId: string,
 ): Promise<DeliverableVersion[]> {
-  if (!access?.operatorId || !access.userId) {
-    throw new Error("Deliverable version queries require a verified operator");
-  }
+  assertOperatorAccess(access);
+  refuseMalformedId(deliverableId, "Deliverable");
 
   return getDb()
     .select()

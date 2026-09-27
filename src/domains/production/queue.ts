@@ -14,9 +14,18 @@
 import { and, asc, count, eq, gte, inArray, isNull, lte, type SQL } from "drizzle-orm";
 
 import type { OperatorAccess } from "./access";
+import { isRealId } from "./errors";
 import { jobLifecycle } from "./lifecycle";
 import { getDb } from "@/lib/db";
-import { brandProfile, artistProfile, productionJob, project, workspace } from "@/lib/db/schema";
+import {
+  brandProfile,
+  artistProfile,
+  operator,
+  productionJob,
+  project,
+  request,
+  workspace,
+} from "@/lib/db/schema";
 import type { JobStatus } from "@/lib/db/schema";
 import type { WorkspaceContext } from "@/lib/navigation";
 
@@ -165,6 +174,7 @@ export async function countProductionQueueByStatus(
  */
 export async function getProductionJob(access: OperatorAccess, jobId: string) {
   assertOperator(access);
+  if (!isRealId(jobId)) return null;
 
   const [row] = await getDb()
     .select({
@@ -207,4 +217,81 @@ export async function getProductionJob(access: OperatorAccess, jobId: string) {
 /** Where a job sits in the lifecycle, for internal ordering. */
 export function queuePosition(status: JobStatus): number {
   return jobLifecycle.indexOf(status);
+}
+
+/**
+ * Customer requests that are waiting to be picked up (Phase 3.1).
+ *
+ * Internal intake: this is the only read in the app that lists work across every
+ * customer, and it exists so an operator can accept a request and open production
+ * for it. It takes an `OperatorAccess` for the same reason the queue does.
+ */
+export async function listOpenRequests(access: OperatorAccess) {
+  assertOperator(access);
+
+  return getDb()
+    .select({
+      id: request.id,
+      workspaceId: request.workspaceId,
+      workspaceSlug: workspace.slug,
+      contextType: request.contextType,
+      title: request.title,
+      description: request.description,
+      category: request.category,
+      status: request.status,
+      createdAt: request.createdAt,
+    })
+    .from(request)
+    .innerJoin(workspace, eq(workspace.id, request.workspaceId))
+    .where(
+      inArray(request.status, ["submitted", "in_validation", "changes_needed"]),
+    )
+    .orderBy(asc(request.createdAt), asc(request.id))
+    .limit(QUEUE_PAGE_LIMIT);
+}
+
+/**
+ * Active operators, for the assignment control.
+ *
+ * Only live operator records are returned, so an assignment can never name a
+ * revoked operator (spec §19.3). Revocation is `active = false`, not a delete,
+ * so the name remains on historical records.
+ */
+export async function listActiveOperators(access: OperatorAccess) {
+  assertOperator(access);
+
+  return getDb()
+    .select({
+      id: operator.id,
+      displayName: operator.displayName,
+      role: operator.role,
+    })
+    .from(operator)
+    .where(eq(operator.active, true))
+    .orderBy(asc(operator.createdAt));
+}
+
+/**
+ * The request a job came from, with the customer's own words (internal read).
+ *
+ * Used by the production workspace so an operator works from what the customer
+ * actually asked for without opening a second screen.
+ */
+export async function getJobRequest(access: OperatorAccess, requestId: string | null) {
+  assertOperator(access);
+  if (!requestId || !isRealId(requestId)) return null;
+
+  const [row] = await getDb()
+    .select({
+      id: request.id,
+      title: request.title,
+      description: request.description,
+      category: request.category,
+      status: request.status,
+    })
+    .from(request)
+    .where(eq(request.id, requestId))
+    .limit(1);
+
+  return row ?? null;
 }

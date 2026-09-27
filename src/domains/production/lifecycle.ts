@@ -17,6 +17,8 @@
 
 import type { JobStatus, ProjectStatus } from "@/lib/db/schema";
 
+
+
 /**
  * The lifecycle in order, front to back (spec §10.3).
  *
@@ -77,6 +79,17 @@ export function canTransition(from: JobStatus, to: JobStatus): boolean {
 /** States that end a job's life: nothing follows them. */
 export function isTerminalJobStatus(status: JobStatus): boolean {
   return jobTransitions[status].length === 0;
+}
+
+/**
+ * Whether a value is a real queue state.
+ *
+ * A type guard over the lifecycle itself rather than a cast: submitted data
+ * naming a status is validated against this list before it reaches the state
+ * machine, so a forged or stale value can never be written (spec §19.4).
+ */
+export function isJobStatus(value: unknown): value is JobStatus {
+  return typeof value === "string" && jobLifecycle.includes(value as JobStatus);
 }
 
 /** Whether the job has started real work (used for `started_at`). */

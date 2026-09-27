@@ -16,6 +16,7 @@
 import { and, eq } from "drizzle-orm";
 
 import type { OperatorAccess } from "./access";
+import { ProductionError, assertOperatorAccess, refuseMalformedId } from "./errors";
 import {
   CUSTOMER_STATUS_BEFORE_PRODUCTION,
   canTransition,
@@ -23,26 +24,30 @@ import {
   hasStarted,
   isTerminalJobStatus,
 } from "./lifecycle";
+import { assertReadyForCustomerReview } from "./qa";
+import { openReviewsForJob } from "./review";
+import { deliverableStatusForJob } from "./status";
+import { notifyWorkspaceOwner } from "@/domains/notifications/emit";
 import { getDb } from "@/lib/db";
-import { operator, productionJob, project, request } from "@/lib/db/schema";
+import {
+  deliverable,
+  operator,
+  productionJob,
+  project,
+  request,
+} from "@/lib/db/schema";
 import { PRODUCTION_PRIORITY_MAX, PRODUCTION_PRIORITY_MIN } from "@/lib/db/schema";
 import type { JobStatus, ProductionJob, Project } from "@/lib/db/schema";
 
 /** Raised when a production write is refused. Never shown to a customer. */
-export class ProductionError extends Error {
-  constructor(
-    message: string,
-    readonly code:
-      | "not_found"
-      | "invalid_transition"
-      | "invalid_priority"
-      | "invalid_operator"
-      | "conflict",
-  ) {
-    super(message);
-    this.name = "ProductionError";
-  }
-}
+export { ProductionError } from "./errors";
+
+/**
+ * The chain and the review record are written by two different principals — an
+ * operator moves a job, a customer decides on a review — and both need to raise
+ * and read the same failure vocabulary. It lives in its own module so neither
+ * side has to import the other.
+ */
 
 /**
  * Create the project that fulfils a customer request.
@@ -121,9 +126,7 @@ function assertPriority(priority: number): void {
 
 /** `assertOperator` shared with the queue: a production write needs proof. */
 function assertOperator(access: OperatorAccess): void {
-  if (!access?.operatorId || !access.userId) {
-    throw new Error("Production writes require a verified operator");
-  }
+  assertOperatorAccess(access);
 }
 
 /**
@@ -239,6 +242,7 @@ export async function transitionJob(
   next: JobStatus,
 ): Promise<ProductionJob> {
   assertOperator(access);
+  refuseMalformedId(jobId, "Job");
 
   const db = getDb();
 
@@ -259,6 +263,52 @@ export async function transitionJob(
     );
   }
 
+  // The internal QA gate. It runs before the write, so a job that is not
+  // genuinely reviewable never reaches `customer_review` — not even for one
+  // moment, and not by any other route into that state (spec §10.4 rule 1).
+  if (next === "customer_review") {
+    await assertReadyForCustomerReview(access, job.id);
+  }
+
+  const updated = await applyJobTransition(job, next);
+
+  // Side effects that belong to a real customer-visible event, written only
+  // after the transition itself succeeded.
+  if (next === "customer_review") {
+    await openReviewsForJob(access, job.id);
+    await notifyReadyForReview(job);
+  }
+
+  if (next === "changes_requested") {
+    await notifyChangesRequested(job);
+  }
+
+  return updated;
+}
+
+/**
+ * The single place a job's state is actually written.
+ *
+ * Both the operator transition and the customer's review decision go through
+ * here, so the lifecycle guard, the timestamps, the derived project status and
+ * the derived deliverable statuses can never disagree with each other
+ * (spec §9.4, §11.2, §10.4 rule 3).
+ *
+ * It performs no authorisation and no notification: the caller has already
+ * proved who is acting, and is responsible for the event it is causing.
+ */
+export async function applyJobTransition(
+  job: ProductionJob,
+  next: JobStatus,
+): Promise<ProductionJob> {
+  if (!canTransition(job.status, next)) {
+    throw new ProductionError(
+      `A job cannot move from ${job.status} to ${next}`,
+      "invalid_transition",
+    );
+  }
+
+  const db = getDb();
   const now = new Date();
 
   const [updated] = await db
@@ -278,7 +328,58 @@ export async function transitionJob(
     .set({ status: customerProjectStatusForJob(next), updatedAt: now })
     .where(eq(project.id, job.projectId));
 
+  // So is each deliverable's status, which is why a customer watching their
+  // work sees "Waiting for your review" exactly when a review was opened for
+  // them (spec §11.2).
+  await db
+    .update(deliverable)
+    .set({ status: deliverableStatusForJob(next), updatedAt: now })
+    .where(eq(deliverable.jobId, job.id));
+
   return updated;
+}
+
+/** The customer route for a job's work: the deliverable they will review. */
+async function firstDeliverableId(jobId: string): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ id: deliverable.id })
+    .from(deliverable)
+    .where(eq(deliverable.jobId, jobId))
+    .orderBy(deliverable.createdAt)
+    .limit(1);
+
+  return row?.id ?? null;
+}
+
+/** "Your work is ready to look over" — a real event, written once, for one customer. */
+async function notifyReadyForReview(job: ProductionJob): Promise<void> {
+  const deliverableId = await firstDeliverableId(job.id);
+  const context = job.contextType;
+
+  await notifyWorkspaceOwner({
+    workspaceId: job.workspaceId,
+    context,
+    type: "ready_for_review",
+    title: "Your work is ready to review",
+    message:
+      "We have finished this round of your work and it is ready for you. Open it, look it over, and tell us what you think.",
+    href: deliverableId
+      ? `/workspace/${context}/work/${deliverableId}`
+      : `/workspace/${context}/projects`,
+  });
+}
+
+/** "We have your changes" — written when a job comes back for revision. */
+async function notifyChangesRequested(job: ProductionJob): Promise<void> {
+  await notifyWorkspaceOwner({
+    workspaceId: job.workspaceId,
+    context: job.contextType,
+    type: "changes_requested",
+    title: "Changes requested",
+    message:
+      "We have your feedback on this work and have started the next round. You will be able to review it here when it is ready.",
+    href: `/workspace/${job.contextType}/projects`,
+  });
 }
 
 /** Assign (or unassign) a job. */
@@ -288,6 +389,7 @@ export async function assignProductionJob(
   assignedOperatorId: string | null,
 ): Promise<ProductionJob> {
   assertOperator(access);
+  refuseMalformedId(jobId, "Job");
 
   const db = getDb();
 

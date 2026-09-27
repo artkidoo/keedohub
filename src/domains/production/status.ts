@@ -78,6 +78,34 @@ export const jobStatuses: readonly JobStatus[] = [
   "delivered",
 ];
 
+/**
+ * The deliverable status a job's deliverables take when the job is in `status`
+ * (spec §11.2 — a deliverable's status is derived from its job, never written
+ * by hand).
+ *
+ * `incoming` and `briefing` both read as "In Production" on a customer surface,
+ * exactly as the project status does, and `internal_qa` is deliberately
+ * invisible: the customer sees "In Production" while KeedoHub checks the work.
+ */
+export function deliverableStatusForJob(status: JobStatus): DeliverableStatus {
+  switch (status) {
+    case "incoming":
+    case "briefing":
+    case "in_production":
+      return "in_production";
+    case "internal_qa":
+      return "internal_qa";
+    case "customer_review":
+      return "customer_review";
+    case "changes_requested":
+      return "changes_requested";
+    case "approved":
+      return "approved";
+    case "delivered":
+      return "delivered";
+  }
+}
+
 export const deliverableStatusLabels: Record<DeliverableStatus, string> = {
   in_production: "In Production",
   internal_qa: "In Production",

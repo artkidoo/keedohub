@@ -4,28 +4,36 @@ import { AppShell } from "@/components/layout/app-shell";
 import { ShellSidebar } from "@/components/layout/shell-sidebar";
 import { Wordmark } from "@/components/layout/wordmark";
 import { Badge } from "@/components/ui/badge";
-import { studioNav } from "@/lib/navigation";
+import { studioNav, type NavItem } from "@/lib/navigation";
 
 type StudioShellProps = {
   /** Internal page name. */
   pageTitle?: string;
   /** Internal header actions slot. */
   actions?: ReactNode;
+  /**
+   * Navigation for this Studio area.
+   *
+   * Defaults to the full internal navigation. A partial area (Phase 3.1 ships
+   * only the production workspace) passes just the sections that actually
+   * exist, so the rail never links to a route that is not built — a dead link
+   * on an internal surface reads as a broken product.
+   */
+  items?: NavItem[];
   children: ReactNode;
 };
 
 /**
  * Private Studio shell.
  *
- * COMPONENT ONLY — deliberately not routed. Studio authorisation must be
- * enforced at route, API, data-access and file-storage level (spec §19), and
- * that authorisation is built in Phase 4. Exposing a Studio route before then
- * would ship an unprotected internal area, which the specification forbids.
+ * Routed from `src/app/studio/layout.tsx`, which proves operator authorisation
+ * before anything here renders (spec §19.1: route level). Every data read and
+ * every action below it re-checks authorisation server-side as well.
  *
- * Internal vocabulary is acceptable inside this shell and must never appear on
- * a customer surface (spec §24).
+ * Internal vocabulary is acceptable inside this shell and must never appear on a
+ * customer surface (spec §24).
  */
-function StudioShell({ pageTitle, actions, children }: StudioShellProps) {
+function StudioShell({ pageTitle, actions, items = studioNav, children }: StudioShellProps) {
   return (
     <AppShell
       header={
@@ -49,7 +57,7 @@ function StudioShell({ pageTitle, actions, children }: StudioShellProps) {
       }
       sidebar={
         <ShellSidebar
-          items={studioNav}
+          items={items}
           navLabel="Studio navigation"
           showContextSwitcher={false}
         />

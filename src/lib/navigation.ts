@@ -293,6 +293,23 @@ export const studioNav: NavItem[] = [
 
 export const defaultWorkspaceContext: WorkspaceContext = "brand";
 
+/**
+ * The Studio sections that exist today (Phase 3.1).
+ *
+ * `studioNav` above is the planned internal map; this is the subset that is
+ * actually routed, so the internal rail only ever links to a working screen. It
+ * grows by one entry each time a Studio section is built, which keeps the
+ * navigation honest instead of aspirational.
+ */
+export const studioProductionNav: NavItem[] = [
+  {
+    label: "Production Queue",
+    href: `${STUDIO_ROOT}/production`,
+    icon: "layers",
+    description: "Jobs by queue state, and the requests waiting to be started.",
+  },
+];
+
 export function isWorkspaceContext(value: string): value is WorkspaceContext {
   return value === "brand" || value === "artist";
 }

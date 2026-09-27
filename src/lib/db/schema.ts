@@ -421,6 +421,29 @@ export const reviewActionEnum = pgEnum("review_action", [
   "request_changes",
 ]);
 
+/**
+ * The review lifecycle (Phase 3.1, spec §13).
+ *
+ * A review is a record, not a field someone edits, so its state is stored
+ * explicitly and can only ever move along the transitions declared in
+ * `production/review-state.ts`:
+ *   - `pending`           — a version was released to the customer and they
+ *                          have not decided yet (an open review)
+ *   - `changes_requested` — the customer asked for a revision of that version
+ *   - `approved`          — the customer accepted that version
+ *   - `superseded`        — a newer version replaced the reviewed one before
+ *                          the customer decided; the row is kept as history
+ *
+ * `superseded` is what lets a pending review be closed honestly when new work
+ * is produced, without ever deleting the record of the review that was open.
+ */
+export const reviewStatusEnum = pgEnum("review_status", [
+  "pending",
+  "changes_requested",
+  "approved",
+  "superseded",
+]);
+
 /* -- Request (§8): the customer's expressed intent, before any production -- */
 
 export const request = pgTable(
@@ -814,24 +837,74 @@ export const review = pgTable(
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => workspace.id, { onDelete: "cascade" }),
+    /**
+     * Brand or Artist context the review belongs to (Phase 3.1).
+     *
+     * Carried on the row, like every other customer-visible record, so a review
+     * can be narrowed by the context it was made in and the two halves of a
+     * workspace can never be confused. Written by the server from the job that
+     * owns the deliverable, never from a request body.
+     */
+    contextType: contextTypeEnum("context_type").notNull(),
     deliverableId: uuid("deliverable_id")
       .notNull()
       .references(() => deliverable.id, { onDelete: "cascade" }),
     /** Approval applies to a specific version, never in the abstract (§13.3). */
     version: integer("version").notNull(),
-    action: reviewActionEnum("action").notNull(),
+    /**
+     * The customer's decision, or NULL while the review is still open.
+     *
+     * NULL is the honest value for a review nobody has answered yet: the row is
+     * created the moment work is released for review, and the action is written
+     * when the customer decides. The Phase 3.1 `status` column is the state the
+     * workflow reads; `action` stays the exact §13.3 decision that was taken.
+     */
+    action: reviewActionEnum("action"),
+    /** Where the review is in its lifecycle (Phase 3.1). Server-driven. */
+    status: reviewStatusEnum("status").notNull().default("pending"),
     /** Required when action = request_changes; retained permanently. */
     feedback: text("feedback"),
-    /** Customer user id (PLANNED attribution once auth data is linked). */
-    reviewedBy: text("reviewed_by"),
+    /**
+     * The customer who acted (Phase 3.1).
+     *
+     * A real foreign key to the authenticated account, so "who decided" is
+     * answered by the database rather than by a string a caller can invent, and
+     * so a review can never be attributed to somebody who does not exist.
+     */
+    reviewedBy: text("reviewed_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => [
     index("review_workspace_id_idx").on(table.workspaceId),
     index("review_deliverable_id_idx").on(table.deliverableId),
+    // Every read of a review is "this deliverable, this version"; the pair is
+    // the natural index for the customer review screen and its history.
+    index("review_deliverable_version_idx").on(table.deliverableId, table.version),
+    // At most one open review per deliverable: a second pending review would be
+    // a conflicting active review, refused by the database as well as in code.
+    uniqueIndex("review_pending_unique")
+      .on(table.deliverableId)
+      .where(sql`${table.status} = 'pending'`),
     check(
       "review_changes_need_feedback",
       sql`${table.action} <> 'request_changes' or ${table.feedback} is not null`,
+    ),
+    // The same rule expressed in the Phase 3.1 state vocabulary: a review may
+    // not sit in `changes_requested` without the feedback that caused it.
+    check(
+      "review_status_changes_need_feedback",
+      sql`${table.status} <> 'changes_requested' or ${table.feedback} is not null`,
+    ),
+    // A decided review carries the decision it recorded; an open or superseded
+    // one carries none. Nothing may hold a state and a contradictory action.
+    check(
+      "review_decision_consistent",
+      sql`(${table.status} = 'approved' and ${table.action} = 'approve')
+        or (${table.status} = 'changes_requested' and ${table.action} = 'request_changes')
+        or (${table.status} in ('pending', 'superseded') and ${table.action} is null)`,
     ),
   ],
 );
@@ -1112,5 +1185,6 @@ export type JobStatus = (typeof jobStatusEnum.enumValues)[number];
 export type DeliverableStatus = (typeof deliverableStatusEnum.enumValues)[number];
 export type AssetCategory = (typeof assetCategoryEnum.enumValues)[number];
 export type ReviewAction = (typeof reviewActionEnum.enumValues)[number];
+export type ReviewStatus = (typeof reviewStatusEnum.enumValues)[number];
 export type NotificationType = (typeof notificationTypeEnum.enumValues)[number];
 export type OperatorRole = (typeof operatorRoleEnum.enumValues)[number];

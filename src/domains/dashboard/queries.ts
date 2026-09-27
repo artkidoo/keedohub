@@ -34,8 +34,11 @@ export async function getDashboardData(access: WorkspaceContextAccess, context: 
     .innerJoin(project, eq(project.id, deliverable.projectId))
     .innerJoin(productionJob, and(eq(productionJob.id, deliverable.jobId), eq(productionJob.projectId, project.id), eq(productionJob.workspaceId, workspaceId)))
     .where(and(scope, eq(deliverable.workspaceId, workspaceId), inArray(deliverable.status, statuses),
-      // A recorded decision on this version is no longer pending review.
-      statuses.includes("customer_review") ? sql`not exists (select 1 from ${review} where ${review.workspaceId} = ${workspaceId} and ${review.deliverableId} = ${deliverable.id} and ${review.version} = ${deliverable.currentVersion})` : undefined,
+      // A recorded DECISION on this version is no longer pending review. An open
+      // review (Phase 3.1: the version is with the customer, they have not
+      // answered yet) is exactly the work this section exists to surface, so it
+      // must keep the deliverable here until the customer decides.
+      statuses.includes("customer_review") ? sql`not exists (select 1 from ${review} where ${review.workspaceId} = ${workspaceId} and ${review.deliverableId} = ${deliverable.id} and ${review.version} = ${deliverable.currentVersion} and ${review.status} <> 'pending')` : undefined,
     ))
     .orderBy(desc(deliverable.updatedAt), desc(deliverable.id)).limit(6);
 
