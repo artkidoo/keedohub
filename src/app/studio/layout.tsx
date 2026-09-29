@@ -2,26 +2,26 @@ import type { ReactNode } from "react";
 
 import { StudioShell } from "@/components/layout/studio-shell";
 import { requireOperator } from "@/domains/production/access";
-import { studioProductionNav } from "@/lib/navigation";
+import { studioNav } from "@/lib/navigation";
 
 type StudioLayoutProps = {
   children: ReactNode;
 };
 
 /**
- * The internal production area (Phase 3.1).
+ * The private KeedoHub Studio (Phase 4.1).
  *
- * This layout is the route-level authorisation layer (spec §19.1):
+ * This layout is the route-level authorisation layer (spec §19.1, §2):
  * `requireOperator` resolves the session and requires a LIVE operator record, so
- * a customer — signed in or not — is answered with a 404 for the entire area
- * rather than a 403 that would confirm it exists. Nothing is rendered before that
- * check, and every read and action beneath it re-authorises independently.
+ * a customer — signed in or not — is answered without ever seeing a Studio
+ * screen. Nothing under this layout renders before that check, every page and
+ * every action beneath it re-authorises independently, and no value from a URL,
+ * query string, header or hidden field participates in the decision.
  *
- * Phase 3.1 ships only the production workspace, so the rail lists only that
- * section: navigation is not a promise about a screen that is not built yet.
+ * The rail lists the Studio sections that exist; each one is a real route.
  */
 export default async function StudioLayout({ children }: StudioLayoutProps) {
   await requireOperator();
 
-  return <StudioShell items={studioProductionNav}>{children}</StudioShell>;
+  return <StudioShell items={studioNav}>{children}</StudioShell>;
 }

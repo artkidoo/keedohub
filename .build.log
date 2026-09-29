@@ -1,0 +1,84 @@
+﻿
+> keedohub@0.1.0 build
+> next build
+
+Γû▓ Next.js 16.3.5 (Turbopack)
+- Environments: .env
+Γ£ô Running next.config.ts took 77ms
+
+node.exe : ΓÜá The "middleware" file convention is deprecated. Please use "proxy" 
+instead.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (ΓÜá The "middle...proxy" instead.:Strin 
+   g) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+  To migrate automatically, run:
+  npx @next/codemod@canary middleware-to-proxy .
+
+  Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+Γ£ô Compiled successfully in 1321ms
+  Running TypeScript ...
+  Finished TypeScript in 9.5s ...
+  Collecting page data using 3 workers ...
+  Generating static pages using 3 workers (0/16) ...
+  Generating static pages using 3 workers (4/16) 
+  Generating static pages using 3 workers (8/16) 
+  Generating static pages using 3 workers (12/16) 
+Γ£ô Generating static pages using 3 workers (16/16) in 550ms
+  Finalizing page optimization ...
+
+Route (app)
+Γöî Γùï /
+Γö£ Γùï /_not-found
+Γö£ ╞Æ /api/assets/[id]
+Γö£ ╞Æ /api/auth/[...all]
+Γö£ ╞Æ /login
+Γö£ ╞Æ /signup
+Γö£ ╞Æ /studio
+Γö£ ╞Æ /studio/customers
+Γö£ ╞Æ /studio/customers/[workspaceId]
+Γö£ ╞Æ /studio/deliveries
+Γö£ ╞Æ /studio/library
+Γö£ ╞Æ /studio/production
+Γö£ ╞Æ /studio/production/[jobId]
+Γö£ ╞Æ /studio/projects
+Γö£ ╞Æ /studio/projects/[projectId]
+Γö£ ╞Æ /studio/requests
+Γö£ ╞Æ /studio/requests/[requestId]
+Γö£ ╞Æ /studio/review
+Γö£ ╞Æ /studio/settings
+Γö£ Γùï /workspace
+Γö£ ╞Æ /workspace/[context]
+Γö£ ╞Æ /workspace/[context]/[section]
+Γö£ ╞Æ /workspace/[context]/assets
+Γö£ ╞Æ /workspace/[context]/assets/[id]
+Γö£ ╞Æ /workspace/[context]/documents
+Γö£ ╞Æ /workspace/[context]/documents/[id]
+Γö£ ╞Æ /workspace/[context]/library
+Γö£ ╞Æ /workspace/[context]/library/[id]
+Γö£ ╞Æ /workspace/[context]/marketing
+Γö£ ╞Æ /workspace/[context]/marketing/[id]
+Γö£ ╞Æ /workspace/[context]/notifications
+Γö£ ╞Æ /workspace/[context]/profile
+Γö£ ╞Æ /workspace/[context]/projects
+Γö£ ╞Æ /workspace/[context]/projects/[id]
+Γö£ ╞Æ /workspace/[context]/releases
+Γö£ ╞Æ /workspace/[context]/releases/[id]
+Γö£ ╞Æ /workspace/[context]/requests
+Γö£ ╞Æ /workspace/[context]/requests/[id]
+Γö£ ╞Æ /workspace/[context]/requests/new
+Γö£ ╞Æ /workspace/[context]/work/[id]
+Γöö ╞Æ /workspace/[context]/work/[id]/files/[fileId]
+
+
+╞Æ Proxy (Middleware)
+
+Γùï  (Static)   prerendered as static content
+╞Æ  (Dynamic)  server-rendered on demand
+
+

@@ -223,15 +223,20 @@ export const workspaceNav: Record<WorkspaceContext, NavItem[]> = {
 };
 
 /**
- * Internal Studio navigation. Internal vocabulary is allowed here and must
- * never be rendered on a customer surface (spec §24). No Studio route is
- * exposed yet: access control arrives in Phase 4, so the shell exists as a
- * component without a public route.
+ * Internal Studio navigation (Phase 4.1).
+ *
+ * The private operational rail, and the exact set of Studio routes that exist.
+ * Internal vocabulary is correct here and must never be rendered on a customer
+ * surface (spec §24). The rail lists only built screens, so every link works:
+ * a dead link on an internal surface reads as a broken product.
+ *
+ * The Studio root IS the Command Center (`/studio`), so the first item and the
+ * overview are the same place rather than two.
  */
 export const studioNav: NavItem[] = [
   {
     label: "Command Center",
-    href: `${STUDIO_ROOT}/command-center`,
+    href: STUDIO_ROOT,
     icon: "dashboard",
     description: "What needs attention now.",
   },
@@ -239,76 +244,53 @@ export const studioNav: NavItem[] = [
     label: "Customers",
     href: `${STUDIO_ROOT}/customers`,
     icon: "users",
-    description: "Workspaces and the customers behind them.",
+    description: "Workspaces, their Brand/Artist context and their work.",
   },
   {
     label: "Requests",
     href: `${STUDIO_ROOT}/requests`,
     icon: "send",
-    description: "Incoming and validated requests.",
+    description: "Incoming requests, and what has been started from them.",
   },
   {
     label: "Projects",
     href: `${STUDIO_ROOT}/projects`,
     icon: "folder",
-    description: "Accepted work in progress.",
+    description: "Accepted work, its jobs, deliverables and versions.",
   },
   {
-    label: "Production Queue",
-    href: `${STUDIO_ROOT}/production-queue`,
+    label: "Production",
+    href: `${STUDIO_ROOT}/production`,
     icon: "layers",
-    description: "Jobs by queue state.",
-  },
-  {
-    label: "Studio",
-    href: `${STUDIO_ROOT}/studio`,
-    icon: "palette",
-    description: "The production workspace for a job.",
+    description: "Jobs by queue state, and the internal QA gate.",
   },
   {
     label: "Review",
     href: `${STUDIO_ROOT}/review`,
     icon: "check",
-    description: "Internal QA and customer review.",
+    description: "Work with the customer, and the decisions they made.",
   },
   {
     label: "Deliveries",
     href: `${STUDIO_ROOT}/deliveries`,
     icon: "package",
-    description: "Approved work prepared or delivered.",
+    description: "Approved work handed to customers, with the exact file.",
   },
   {
     label: "Library",
     href: `${STUDIO_ROOT}/library`,
     icon: "images",
-    description: "Internal asset and file library.",
+    description: "Files in the chain, and whether the customer can see them.",
   },
   {
     label: "Settings",
     href: `${STUDIO_ROOT}/settings`,
     icon: "settings",
-    description: "Production types, templates and operator access.",
+    description: "Operator access and this environment.",
   },
 ];
 
 export const defaultWorkspaceContext: WorkspaceContext = "brand";
-
-/**
- * The Studio sections that exist today (Phase 3.1).
- *
- * `studioNav` above is the planned internal map; this is the subset that is
- * actually routed, so the internal rail only ever links to a working screen. It
- * grows by one entry each time a Studio section is built, which keeps the
- * navigation honest instead of aspirational.
- */
-export const studioProductionNav: NavItem[] = [
-  {
-    label: "Production Queue",
-    href: `${STUDIO_ROOT}/production`,
-    icon: "layers",
-    description: "Jobs by queue state, and the requests waiting to be started.",
-  },
-];
 
 export function isWorkspaceContext(value: string): value is WorkspaceContext {
   return value === "brand" || value === "artist";
