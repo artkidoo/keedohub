@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { requireOperator } from "@/domains/production/access";
 import { IntakeRow } from "@/domains/production/intake-row";
 import { jobStatusLabels } from "@/domains/production/job-controls";
+import { formatInstant } from "@/domains/production/job-view";
 import { jobLifecycle } from "@/domains/production/lifecycle";
 import {
   countProductionQueueByStatus,
@@ -99,7 +100,7 @@ export default async function ProductionQueuePage() {
                       {job.title}
                     </Link>
                     <p className="text-meta break-words text-muted-foreground">
-                      {`${job.workspaceSlug} · ${job.contextType} · ${job.productionType} · ${job.projectName} · priority ${job.priority}`}
+                      {`${job.workspaceSlug} · ${job.contextType} · ${job.productionType} · ${job.projectName} · priority ${job.priority} · ${job.assignedOperatorName ?? "unassigned"} · updated ${formatInstant(job.updatedAt)}`}
                     </p>
                   </div>
                   <Badge variant="outline" className="shrink-0">

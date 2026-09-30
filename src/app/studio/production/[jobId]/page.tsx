@@ -10,12 +10,14 @@ import { deliveryReadinessFor, listDeliveriesForJob } from "@/domains/production
 import { DeliverableForm } from "@/domains/production/deliverable-form";
 import { JobControls, jobStatusLabels } from "@/domains/production/job-controls";
 import {
+  CustomerContextCard,
   DeliverableCard,
   DeliveryCard,
   JobSummary,
   QaCard,
   RequestCard,
 } from "@/domains/production/job-view";
+import { getProductionContext } from "@/domains/production/customer-context";
 import { listJobDeliverables, qaReadiness } from "@/domains/production/qa";
 import { getJobRequest, getProductionJob, listActiveOperators } from "@/domains/production/queue";
 import { listReviewsForDeliverable } from "@/domains/production/review";
@@ -81,12 +83,25 @@ export default async function ProductionJobPage({
   const job = await getProductionJob(access, jobId);
   if (!job) notFound();
 
-  const [sourceRequest, operators, deliverables, readiness] = await Promise.all([
+  const [
+    sourceRequest,
+    operators,
+    deliverables,
+    readiness,
+    customerContext,
+  ] = await Promise.all([
     getJobRequest(access, job.requestId),
     listActiveOperators(access),
     listJobDeliverables(access, job.id),
     qaReadiness(access, job.id),
+    getProductionContext(access, job),
   ]);
+
+  // Resolve the assigned operator's name from the active-operator list the
+  // page already loads, so the header reflects who is doing the work today.
+  const assignedOperatorName =
+    operators.find((entry) => entry.id === job.assignedOperatorId)?.displayName ??
+    null;
 
   const versionsByDeliverable = await Promise.all(
     deliverables.map((item) => listDeliverableVersions(access, item.id)),
@@ -108,7 +123,7 @@ export default async function ProductionJobPage({
       <PageHeader
         breadcrumb={[{ label: "Production queue", href: "/studio/production" }]}
         title={job.title}
-        eyebrow={`${job.workspaceSlug} · ${job.contextType}`}
+        eyebrow={`${job.workspaceSlug} · ${job.contextType} · priority ${job.priority}`}
         description={job.description ?? undefined}
         actions={
           <Badge variant="outline" className="shrink-0">
@@ -118,9 +133,11 @@ export default async function ProductionJobPage({
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <JobSummary job={job} />
+        <JobSummary job={{ ...job, assignedOperatorName }} />
         <RequestCard source={sourceRequest} />
       </div>
+
+      <CustomerContextCard context={customerContext} />
 
       <Card>
         <CardHeader>

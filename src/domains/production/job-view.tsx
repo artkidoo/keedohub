@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeliveryButton } from "./delivery-button";
 import { deliveryRefusalLabels, type DeliveryReadiness, type DeliveryRefusal } from "./delivery-state";
+import type { ProductionContext } from "./customer-context";
 import type { QaFinding } from "./qa";
 import type {
   DeliverableStatus,
@@ -61,6 +62,8 @@ type JobFacts = {
   projectName: string;
   productionType: string;
   priority: number;
+  /** The operator currently doing this work, or null when nobody has taken it. */
+  assignedOperatorName: string | null;
   createdAt: Date;
   startedAt: Date | null;
   updatedAt: Date;
@@ -87,6 +90,10 @@ export function JobSummary({ job }: { job: JobFacts }) {
           <Detail
             label="Profile"
             value={job.brandProfileName ?? job.artistProfileName ?? "—"}
+          />
+          <Detail
+            label="Assigned to"
+            value={job.assignedOperatorName ?? "Unassigned"}
           />
           <Detail label="Project" value={job.projectName} />
           <Detail label="Production type" value={job.productionType} />
@@ -390,6 +397,73 @@ export function DeliverableCard({
         <VersionHistory versions={versions} />
         <ReviewRecord reviews={reviews} />
         {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * The customer's creative direction, read straight from the profile the job is
+ * bound to (Phase 4.2, spec §8).
+ *
+ * This is deliberately read-only: it renders the customer's Brand DNA or Artist
+ * identity as facts and colour swatches, and offers no way to change it from the
+ * production workspace. Every value shown is one the customer actually supplied —
+ * an empty profile says so plainly rather than padding the screen — and colours
+ * are only painted when they are a real, validated colour, so a stray value is
+ * shown as text instead of becoming a style.
+ */
+export function CustomerContextCard({
+  context,
+}: {
+  context: ProductionContext | null;
+}) {
+  const kindLabel = context?.kind === "artist" ? "Artist" : "Brand";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{`${kindLabel} creative direction`}</CardTitle>
+        <CardDescription>
+          Read-only context from the customer&rsquo;s profile. Production cannot
+          change it from here.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {!context || !context.hasContent ? (
+          <p className="text-sm break-words text-muted-foreground">
+            {`No ${kindLabel.toLowerCase()} creative direction has been recorded for this work yet. Work from the brief and the customer’s request.`}
+          </p>
+        ) : (
+          <>
+            {context.colours.length ? (
+              <div className="flex flex-col gap-2">
+                <span className="text-eyebrow uppercase text-muted-foreground">
+                  Colour palette
+                </span>
+                <ul className="flex flex-wrap gap-3">
+                  {context.colours.map((entry) => (
+                    <li key={entry.role} className="flex items-center gap-2">
+                      <span
+                        aria-hidden
+                        className="h-6 w-6 shrink-0 rounded border border-border"
+                        style={{ backgroundColor: entry.colour }}
+                      />
+                      <span className="text-meta text-muted-foreground">
+                        {`${entry.role}: ${entry.colour}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <dl className="grid gap-4 sm:grid-cols-2">
+              {context.facts.map((entry) => (
+                <Detail key={entry.label} label={entry.label} value={entry.value} />
+              ))}
+            </dl>
+          </>
+        )}
       </CardContent>
     </Card>
   );

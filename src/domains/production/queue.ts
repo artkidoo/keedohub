@@ -122,6 +122,7 @@ export async function listProductionQueue(
       status: productionJob.status,
       priority: productionJob.priority,
       assignedOperatorId: productionJob.assignedOperatorId,
+      assignedOperatorName: operator.displayName,
       startedAt: productionJob.startedAt,
       completedAt: productionJob.completedAt,
       createdAt: productionJob.createdAt,
@@ -130,6 +131,7 @@ export async function listProductionQueue(
     .from(productionJob)
     .innerJoin(project, eq(project.id, productionJob.projectId))
     .innerJoin(workspace, eq(workspace.id, productionJob.workspaceId))
+    .leftJoin(operator, eq(operator.id, productionJob.assignedOperatorId))
     .where(queuePredicate(filter))
     .orderBy(asc(productionJob.priority), asc(productionJob.createdAt), asc(productionJob.id))
     .limit(limit);
