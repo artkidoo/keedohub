@@ -53,14 +53,30 @@ export function safeFilename(input: string): string {
       return character;
     })
     .join("")
-    .replace(/^\.+/, "")
+    // A run of dots or separators can only ever read as a path or a hidden or
+    // relative name, so every run is flattened to a single dash before the name
+    // is tidied. Phase 4.3 hardened this: `../../etc/passwd` now stores as
+    // `etc-passwd` rather than as something that still looks like a path.
+    .replace(/[.\-/\\]{2,}/g, "-")
+    .replace(/^[.\s-]+/, "")
+    .replace(/\.+$/, "")
     .trim()
     .slice(0, 180);
 
   return cleaned.length ? cleaned : "output";
 }
 
-/** Bounded, honest validation of an uploaded production output. */
+/**
+ * Bounded, honest validation of an uploaded production output.
+ *
+ * The file name, its extension, its size and (where a type is declared at all)
+ * its mime type are the only things about an upload KeedoHub trusts, and only
+ * after they have passed here — Phase 4.3 spec §11. A name with no readable
+ * extension is refused rather than stored, because a version the customer cannot
+ * identify is not a finished piece of work; the extension check is deliberately
+ * permissive about *which* extension, so new working formats never need a code
+ * change, and deliberately strict about *having* one.
+ */
 export function assertUsableFile(file: {
   name: string;
   size: number;
@@ -68,6 +84,12 @@ export function assertUsableFile(file: {
 }): void {
   if (!file.name?.trim()) {
     throw new ProductionError("The file has no name", "invalid_input");
+  }
+  if (!hasReadableExtension(file.name)) {
+    throw new ProductionError(
+      "The file has no recognisable extension, so KeedoHub cannot record what kind of file it is",
+      "invalid_input",
+    );
   }
   if (!Number.isFinite(file.size) || file.size <= 0) {
     throw new ProductionError("The file is empty", "invalid_input");
@@ -78,6 +100,20 @@ export function assertUsableFile(file: {
       "invalid_input",
     );
   }
+}
+
+/**
+ * Whether a filename ends in a plain, readable extension.
+ *
+ * Written as a shape test rather than an allow-list: the set of formats KeedoHub
+ * can produce is open (PostScript, WAV, DOCX, AI …), but a name with no
+ * extension after the last dot is not something an operator can identify later.
+ * A trailing dot, a hidden file name and a doubled dot all fail.
+ */
+export function hasReadableExtension(name: string): boolean {
+  // At least one character, then a dot, then a plain extension — so a hidden or
+  // relative name such as ".png" is not mistaken for a real file.
+  return /.+\.[a-z0-9]{1,12}$/i.test(name.trim());
 }
 
 /**

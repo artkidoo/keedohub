@@ -111,6 +111,24 @@ export async function createDeliverableVersion(
   return await db.transaction(async (tx) => {
     const now = new Date();
 
+    // Lock the deliverable row for the life of this transaction. Version
+    // numbers are derived from `max(version) + 1`, so two producers working on
+    // the same deliverable at the same moment would otherwise compute the same
+    // number and one would fail on the unique index below (spec §11.3, §12.3).
+    // Serialising here makes the second writer read the first writer's number
+    // and carry on; nothing about the caller's state machine changes, and no
+    // UI disabling is involved.
+    const [locked] = await tx
+      .select({ id: deliverable.id })
+      .from(deliverable)
+      .where(eq(deliverable.id, deliv.id))
+      .limit(1)
+      .for("update");
+
+    if (!locked) {
+      throw new ProductionError("Deliverable not found", "not_found");
+    }
+
     const [maxRow] = await tx
       .select({ maxVersion: sql<number>`coalesce(max(${deliverableVersion.version}), 0)` })
       .from(deliverableVersion)

@@ -11,6 +11,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ProductionFilePreview } from "@/domains/creative/production-file-preview";
 import { DeliveryButton } from "./delivery-button";
 import { deliveryRefusalLabels, type DeliveryReadiness, type DeliveryRefusal } from "./delivery-state";
 import type { ProductionContext } from "./customer-context";
@@ -198,34 +199,74 @@ function qaReasonCopy(reason: QaFinding["reason"]): string {
   }
 }
 
-/** Every version of a deliverable, newest first. Nothing is ever removed. */
-export function VersionHistory({ versions }: { versions: DeliverableVersion[] }) {
+/** The file fields a version's file needs to be previewed (Phase 4.3). */
+export type DeliverableAsset = {
+  id: string;
+  filename: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  version: number;
+  category: string;
+  customerVisible: boolean;
+  createdAt: Date;
+};
+
+/**
+ * Every version of a deliverable, newest first. Nothing is ever removed.
+ *
+ * Since Phase 4.3 each version also shows the file it was produced as — an
+ * inline preview when the format can be painted safely, a file card when it
+ * cannot — because an operator must be able to tell what they uploaded without
+ * leaving the workspace (spec §12). The file is matched to its version by asset
+ * id, never by version number, so a version can never show another version's
+ * file.
+ */
+export function VersionHistory({
+  versions,
+  assets = [],
+}: {
+  versions: DeliverableVersion[];
+  /** The files recorded for this deliverable. Empty is honest: no preview. */
+  assets?: DeliverableAsset[];
+}) {
   return (
     <div className="flex flex-col gap-3">
       <h3 className="text-sm font-medium text-foreground">Version history</h3>
       {versions.length ? (
         <ul className="divide-y divide-border border-y border-border">
-          {versions.map((entry) => (
-            <li key={entry.id} className="flex flex-col gap-1 py-3">
-              <p className="text-sm break-words text-foreground">
-                {`Version ${entry.version}${entry.isCurrent ? " (current)" : ""}${
-                  entry.assetId ? "" : " — no file attached"
-                }`}
-              </p>
-              {entry.note ? (
-                <p className="text-meta break-words text-muted-foreground">
-                  {entry.note}
+          {versions.map((entry) => {
+            const file = entry.assetId
+              ? assets.find((asset) => asset.id === entry.assetId)
+              : undefined;
+
+            return (
+              <li key={entry.id} className="flex flex-col gap-3 py-4">
+                <p className="text-sm break-words text-foreground">
+                  {`Version ${entry.version}${entry.isCurrent ? " (current)" : ""}${
+                    entry.assetId ? "" : " — no file attached"
+                  }`}
                 </p>
-              ) : null}
-              <p className="text-meta text-muted-foreground">
-                {`Created ${formatInstant(entry.createdAt)}${
-                  entry.supersededAt
-                    ? ` · superseded ${formatInstant(entry.supersededAt)}`
-                    : ""
-                }`}
-              </p>
-            </li>
-          ))}
+                {entry.note ? (
+                  <p className="text-meta break-words whitespace-pre-line text-muted-foreground">
+                    {entry.note}
+                  </p>
+                ) : null}
+                {file ? (
+                  <ProductionFilePreview
+                    asset={file}
+                    caption={`File for version ${entry.version}`}
+                  />
+                ) : null}
+                <p className="text-meta text-muted-foreground">
+                  {`Created ${formatInstant(entry.createdAt)}${
+                    entry.supersededAt
+                      ? ` · superseded ${formatInstant(entry.supersededAt)}`
+                      : ""
+                  }`}
+                </p>
+              </li>
+            );
+          })}
         </ul>
       ) : (
         <p className="text-sm text-muted-foreground">
@@ -364,6 +405,7 @@ export function DeliverableCard({
   deliverable,
   versions,
   reviews,
+  assets = [],
   children,
 }: {
   /** The fields the workspace shows; the queue read returns exactly these. */
@@ -376,6 +418,8 @@ export function DeliverableCard({
   };
   versions: DeliverableVersion[];
   reviews: Review[];
+  /** The files recorded for this deliverable, so each version can show its own. */
+  assets?: DeliverableAsset[];
   children: React.ReactNode;
 }) {
   return (
@@ -394,7 +438,7 @@ export function DeliverableCard({
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
-        <VersionHistory versions={versions} />
+        <VersionHistory versions={versions} assets={assets} />
         <ReviewRecord reviews={reviews} />
         {children}
       </CardContent>

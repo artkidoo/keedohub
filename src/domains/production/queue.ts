@@ -278,6 +278,12 @@ export async function listActiveOperators(access: OperatorAccess) {
  *
  * Used by the production workspace so an operator works from what the customer
  * actually asked for without opening a second screen.
+ *
+ * Phase 4.3 adds the request's structured `requirements`, its `reference_links`
+ * and any `requested_date` to this read, because the production workspace now
+ * presents the brief from the request itself rather than from a second query
+ * (spec §7). These are the customer's own submitted values, and the workspace
+ * decides what is present and honest before showing any of them.
  */
 export async function getJobRequest(access: OperatorAccess, requestId: string | null) {
   assertOperator(access);
@@ -290,6 +296,9 @@ export async function getJobRequest(access: OperatorAccess, requestId: string | 
       description: request.description,
       category: request.category,
       status: request.status,
+      requirements: request.requirements,
+      referenceLinks: request.referenceLinks,
+      requestedDate: request.requestedDate,
     })
     .from(request)
     .where(eq(request.id, requestId))

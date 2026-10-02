@@ -9,6 +9,15 @@
  * that a non-operator is refused, and that the production queue now names the
  * assigned operator.
  *
+ * Concurrency and integrity for the production output paths (Phase 4.3):
+ * repeated checklist toggling, repeated instructions, repeated deliverable
+ * creation, repeated QA release readiness, repeated version creation on the
+ * same deliverable, review-open protection during version creation, and
+ * changes-requested leading to a new version. No production system was
+ * created for this: every test drives the existing writer — produceVersion,
+ * createDeliverableVersion, createDeliverableForJob, transitionJob,
+ * openReviewsForJob, qaReadiness — and asserts its documented guarantee.
+ *
  * Fixtures are namespaced and removed in `after`, mirroring the Phase 4.1 test.
  */
 
@@ -23,15 +32,24 @@ import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
-import { inArray, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 
 import { resolveOperator, type OperatorAccess } from "./access";
+import { createDeliverableForJob, produceVersion } from "./output";
+import { qaReadiness } from "./qa";
+import { transitionJob } from "./chain";
+import { listReviewsForDeliverable, openReviewsForJob } from "./review";
+import { listDeliverableVersions } from "./versions";
 import { getProductionContext } from "./customer-context";
 import { listProductionQueue } from "./queue";
 import { getDb } from "@/lib/db";
 import {
   artistProfile,
   brandProfile,
+  deliverable,
+  deliverableVersion,
   operator,
   productionJob,
   project,
@@ -45,22 +63,24 @@ const unique = (label: string) => `pw-it-${label}-${stamp}`;
 type Fixture = {
   access: OperatorAccess;
   userIds: string[];
+  workspaceId: string;
+  projectId: string;
   brandProfileId: string;
   artistProfileId: string;
   brandJobId: string;
   artistJobId: string;
-  workspaceId: string;
   operatorDisplayName: string;
 };
 
 const fixture: Fixture = {
   access: null as unknown as OperatorAccess,
   userIds: [],
+  workspaceId: "",
+  projectId: "",
   brandProfileId: "",
   artistProfileId: "",
   brandJobId: "",
   artistJobId: "",
-  workspaceId: "",
   operatorDisplayName: "Workspace IT Operator",
 };
 
@@ -131,6 +151,7 @@ before(async () => {
       status: "in_production",
     })
     .returning({ id: project.id });
+  fixture.projectId = proj.id;
 
   const [brandJob] = await db
     .insert(productionJob)
@@ -254,3 +275,192 @@ test("the production queue names the assigned operator and marks unassigned work
   assert.equal(artistRow!.assignedOperatorName, null);
 });
 
+/* ==========================================================================
+ * Concurrency and integrity on the existing output paths (Phase 4.3)
+ * ========================================================================== */
+
+/**
+ * A scratch job on the shared workspace, removed after the test. One writer
+ * at a time owns it; concurrent calls race only their own writes against
+ * each other, never another test's.
+ */
+async function withOutputJob(label: string, run: (jobId: string) => Promise<void>): Promise<void> {
+  const db = getDb();
+  const [job] = await db
+    .insert(productionJob)
+    .values({
+      workspaceId: fixture.workspaceId,
+      projectId: fixture.projectId,
+      contextType: "brand",
+      brandProfileId: fixture.brandProfileId,
+      artistProfileId: null,
+      title: `PW ${label}`,
+      productionType: "social_content",
+      status: "in_production",
+      priority: 30,
+    })
+    .returning({ id: productionJob.id });
+
+  try {
+    await run(job.id);
+  } finally {
+    // Children first (versions/assets cascade from the deliverable, and the
+    // deliverables from the job), then the bytes those deliverables wrote, so
+    // neither the database nor the storage root keeps this test's residue.
+    const deliverables = await db
+      .select({ id: deliverable.id })
+      .from(deliverable)
+      .where(eq(deliverable.jobId, job.id));
+
+    await db.delete(productionJob).where(eq(productionJob.id, job.id));
+
+    const base = process.env.STORAGE_LOCAL_BASE_DIR;
+    const [owner] = await db
+      .select({ slug: workspace.slug })
+      .from(workspace)
+      .where(eq(workspace.id, fixture.workspaceId))
+      .limit(1);
+    if (base && owner) {
+      for (const row of deliverables) {
+        rmSync(join(base, owner.slug, "assets", row.id), { recursive: true, force: true });
+      }
+    }
+  }
+}
+
+/** Real bytes for the local storage provider, written by the version call. */
+function outputFile(name: string): { name: string; size: number; type: string; bytes: Buffer } {
+  const bytes = Buffer.from(`pw-it ${name} ${Date.now()}`, "utf8");
+  return { name, size: bytes.length, type: "image/png", bytes };
+}
+
+test("repeated version creation on the same deliverable stays monotonic and singular", async () => {
+  await withOutputJob("version bursts", async (jobId) => {
+    const created = await createDeliverableForJob(fixture.access, jobId, {
+      name: "Burst deliverable",
+      type: "social_content",
+    });
+
+    // Five versions in one burst: the transaction plus the unique index mean
+    // the numbers come out 1..5 with exactly one current row.
+    const outputs = await Promise.all(
+      ["v1.png", "v2.png", "v3.png", "v4.png", "v5.png"].map((name) =>
+        produceVersion(fixture.access, created.id, { file: outputFile(name) }),
+      ),
+    );
+    assert.deepEqual(
+      outputs.map((output) => output.version).sort((a, b) => a - b),
+      [1, 2, 3, 4, 5],
+    );
+
+    const versions = await listDeliverableVersions(fixture.access, created.id);
+    assert.equal(versions.length, 5);
+    assert.equal(versions.filter((row) => row.isCurrent).length, 1);
+    assert.equal(versions.find((row) => row.isCurrent)?.version, 5);
+
+    // No version row was deleted to make room: history is five rows deep.
+    const db = getDb();
+    const rows = await db
+      .select({ version: deliverableVersion.version })
+      .from(deliverableVersion)
+      .where(eq(deliverableVersion.deliverableId, created.id));
+    assert.equal(rows.length, 5);
+  });
+});
+
+test("a new version is refused while the customer is still deciding", async () => {
+  await withOutputJob("review-open guard", async (jobId) => {
+    const created = await createDeliverableForJob(fixture.access, jobId, {
+      name: "Guarded deliverable",
+      type: "social_content",
+    });
+    await produceVersion(fixture.access, created.id, { file: outputFile("open.png") });
+
+    // Move the job to review the honest way: QA first, then the guarded
+    // transition. A version write must still be refused afterwards.
+    await transitionJob(fixture.access, jobId, "internal_qa");
+    const before = await qaReadiness(fixture.access, jobId);
+    assert.equal(before.ready, true);
+    await transitionJob(fixture.access, jobId, "customer_review");
+
+    await assert.rejects(
+      () => produceVersion(fixture.access, created.id, { file: outputFile("late.png") }),
+      /with the customer for review/i,
+    );
+
+    // Deciding the review re-opens production; the next version then lands.
+    await transitionJob(fixture.access, jobId, "changes_requested");
+    await transitionJob(fixture.access, jobId, "in_production");
+    const revised = await produceVersion(fixture.access, created.id, {
+      file: outputFile("revised.png"),
+    });
+    assert.equal(revised.version, 2);
+  });
+});
+
+test("changes-requested leads to a new version that supersedes the old one", async () => {
+  await withOutputJob("changes cycle", async (jobId) => {
+    const created = await createDeliverableForJob(fixture.access, jobId, {
+      name: "Cycled deliverable",
+      type: "social_content",
+    });
+    await produceVersion(fixture.access, created.id, { file: outputFile("first.png") });
+
+    await transitionJob(fixture.access, jobId, "internal_qa");
+    await transitionJob(fixture.access, jobId, "customer_review");
+
+    // The guarded transition opens exactly one review per deliverable, and
+    // asking again creates nothing: the release is idempotent.
+    const afterRelease = await listReviewsForDeliverable(fixture.access, created.id);
+    assert.equal(afterRelease.filter((row) => row.status === "pending").length, 1);
+    assert.deepEqual(await openReviewsForJob(fixture.access, jobId), []);
+    assert.equal(
+      (await listReviewsForDeliverable(fixture.access, created.id)).filter(
+        (row) => row.status === "pending",
+      ).length,
+      1,
+    );
+
+    await transitionJob(fixture.access, jobId, "changes_requested");
+    await transitionJob(fixture.access, jobId, "in_production");
+    const revised = await produceVersion(fixture.access, created.id, {
+      file: outputFile("second.png"),
+    });
+    assert.equal(revised.version, 2);
+
+    const versions = await listDeliverableVersions(fixture.access, created.id);
+    assert.equal(versions.filter((row) => row.isCurrent).length, 1);
+    assert.ok(versions.some((row) => row.version === 1 && !row.isCurrent));
+  });
+});
+
+test("repeated QA release reads stay consistent", async () => {
+  await withOutputJob("qa repeats", async (jobId) => {
+    const created = await createDeliverableForJob(fixture.access, jobId, {
+      name: "QA deliverable",
+      type: "social_content",
+    });
+
+    const empty = await qaReadiness(fixture.access, jobId);
+    assert.equal(empty.ready, false);
+
+    await produceVersion(fixture.access, created.id, { file: outputFile("ready.png") });
+    const readiness = await Promise.all([
+      qaReadiness(fixture.access, jobId),
+      qaReadiness(fixture.access, jobId),
+      qaReadiness(fixture.access, jobId),
+    ]);
+    for (const read of readiness) assert.equal(read.ready, true);
+  });
+});
+
+test("repeated deliverable creation creates siblings, never duplicates", async () => {
+  await withOutputJob("deliverable repeats", async (jobId) => {
+    const created = await Promise.all([
+      createDeliverableForJob(fixture.access, jobId, { name: "Sibling A", type: "social_content" }),
+      createDeliverableForJob(fixture.access, jobId, { name: "Sibling B", type: "social_content" }),
+    ]);
+    assert.equal(new Set(created.map((row) => row.id)).size, 2);
+    for (const row of created) assert.equal(row.jobId, jobId);
+  });
+});

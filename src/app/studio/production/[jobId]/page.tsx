@@ -5,7 +5,20 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { normaliseReferenceLinks, normaliseRequirements } from "@/domains/creative/brief";
+import { checklistProgress } from "@/domains/creative/checklist";
+import { CreativeBriefCard } from "@/domains/creative/creative-brief";
+import { CreativeReferencesCard } from "@/domains/creative/creative-references";
+import { OutputRequirementsCard } from "@/domains/creative/output-requirements";
+import { ProductionChecklist } from "@/domains/creative/production-checklist";
+import { ProductionInstructionsCard } from "@/domains/creative/production-instructions";
+import { ProductionSummary } from "@/domains/creative/production-summary";
+import { productionProfileFor, productionTypeLabel } from "@/domains/creative/production-types";
+import { listJobReferences } from "@/domains/creative/references";
+import { buildOutputRequirements } from "@/domains/creative/requirements";
+import { getJobBrief } from "@/domains/creative/store";
 import { requireOperator } from "@/domains/production/access";
+import { getProductionContext } from "@/domains/production/customer-context";
 import { deliveryReadinessFor, listDeliveriesForJob } from "@/domains/production/delivery";
 import { DeliverableForm } from "@/domains/production/deliverable-form";
 import { JobControls, jobStatusLabels } from "@/domains/production/job-controls";
@@ -15,14 +28,14 @@ import {
   DeliveryCard,
   JobSummary,
   QaCard,
-  RequestCard,
 } from "@/domains/production/job-view";
-import { getProductionContext } from "@/domains/production/customer-context";
+import { listDeliverableAssets } from "@/domains/production/output";
 import { listJobDeliverables, qaReadiness } from "@/domains/production/qa";
 import { getJobRequest, getProductionJob, listActiveOperators } from "@/domains/production/queue";
 import { listReviewsForDeliverable } from "@/domains/production/review";
 import { VersionForm } from "@/domains/production/version-form";
 import { listDeliverableVersions } from "@/domains/production/versions";
+import { requestCategoryLabel } from "@/domains/requests/categories";
 import { isValidUUIDv4 } from "@/lib/validation/id";
 
 export const metadata = { title: "Production job" };
@@ -89,12 +102,16 @@ export default async function ProductionJobPage({
     deliverables,
     readiness,
     customerContext,
+    brief,
+    references,
   ] = await Promise.all([
     getJobRequest(access, job.requestId),
     listActiveOperators(access),
     listJobDeliverables(access, job.id),
     qaReadiness(access, job.id),
     getProductionContext(access, job),
+    getJobBrief(access, job.id),
+    listJobReferences(access, job),
   ]);
 
   // Resolve the assigned operator's name from the active-operator list the
@@ -109,6 +126,25 @@ export default async function ProductionJobPage({
   const reviewsByDeliverable = await Promise.all(
     deliverables.map((item) => listReviewsForDeliverable(access, item.id)),
   );
+  const assetsByDeliverable = await Promise.all(
+    deliverables.map((item) => listDeliverableAssets(access, item.id)),
+  );
+
+  // The creative reading of this job: what kind of work it is, what that kind of
+  // work has to be produced as, and how far through the operator's own checklist
+  // it is. Every one of these is derived from stored values — the production
+  // type, the customer's request, the operator's own instructions — and nothing
+  // is invented to fill a gap (spec §7, §14).
+  const profile = productionProfileFor(job.productionType);
+  const typeLabel = productionTypeLabel(job.contextType, job.productionType);
+  const requirementFacts = normaliseRequirements(sourceRequest?.requirements);
+  const referenceLinks = normaliseReferenceLinks(sourceRequest?.referenceLinks);
+  const outputRequirements = buildOutputRequirements({
+    type: job.productionType,
+    instructions: brief.instructions,
+    requirements: requirementFacts,
+  });
+  const checklist = checklistProgress(job.productionType, brief.checklist);
 
   // Phase 3.2: the delivery facts for each deliverable, read through the same
   // gate the delivery action itself uses, so the operator sees the real reason
@@ -134,16 +170,150 @@ export default async function ProductionJobPage({
 
       <div className="grid gap-6 lg:grid-cols-2">
         <JobSummary job={{ ...job, assignedOperatorName }} />
-        <RequestCard source={sourceRequest} />
+        <CreativeBriefCard
+          request={
+            sourceRequest
+              ? {
+                  title: sourceRequest.title,
+                  description: sourceRequest.description,
+                  category: requestCategoryLabel(job.contextType, sourceRequest.category),
+                }
+              : null
+          }
+          productionTypeLabel={typeLabel}
+          contextLabel={job.contextType === "brand" ? "Brand" : "Artist"}
+          requirements={requirementFacts}
+          references={referenceLinks}
+          requestedDate={sourceRequest?.requestedDate ?? null}
+          projectName={job.projectName}
+        />
       </div>
 
       <CustomerContextCard context={customerContext} />
 
+      {/*
+        The creative production area. This is the centre of the workspace: what
+        the operator is producing, what it has to be produced as, how far through
+        their own checklist it is, what files came in as references, whether the
+        work would pass internal QA, and the deliverables themselves with every
+        version they have ever had.
+      */}
+      <section aria-labelledby="creative-production" className="flex min-w-0 flex-col gap-6">
+        <div className="flex flex-col gap-2 border-t border-border pt-8">
+          <h2 id="creative-production" className="text-section">
+            Creative production
+          </h2>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {`Producing the ${typeLabel.toLowerCase()} this job is for. Everything in this section is internal to KeedoHub — the customer never sees any of it.`}
+          </p>
+        </div>
+
+        <ProductionSummary status={job.status} />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <ProductionInstructionsCard jobId={job.id} instructions={brief.instructions} />
+          <div className="flex min-w-0 flex-col gap-6">
+            <OutputRequirementsCard typeLabel={typeLabel} requirements={outputRequirements} />
+            <Card>
+              <CardHeader>
+                <CardTitle>Production checklist</CardTitle>
+                <CardDescription>
+                  What has been made sure of on this job. A complete checklist does
+                  not release work — internal QA does.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ProductionChecklist jobId={job.id} progress={checklist} />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        <CreativeReferencesCard references={references} />
+
+        <QaCard ready={readiness.ready} findings={readiness.findings} />
+
+        <section aria-labelledby="deliverables" className="flex min-w-0 flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <h3 id="deliverables" className="text-heading font-semibold">
+              Deliverables and versions
+            </h3>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              The pieces of work this job produces. Every file uploaded becomes a
+              new version and the version it replaces is kept, so nothing is ever
+              lost.
+            </p>
+          </div>
+
+          {deliverables.length ? (
+            <ul className="flex flex-col gap-6">
+              {deliverables.map((item, index) => {
+                const versions = versionsByDeliverable[index];
+                const nextVersion =
+                  versions.reduce(
+                    (highest, entry) => Math.max(highest, entry.version),
+                    0,
+                  ) + 1;
+
+                return (
+                  <li key={item.id}>
+                    <DeliverableCard
+                      deliverable={item}
+                      versions={versions}
+                      reviews={reviewsByDeliverable[index]}
+                      assets={assetsByDeliverable[index]}
+                    >
+                      <DeliveryCard
+                        deliverableId={item.id}
+                        version={item.currentVersion}
+                        readiness={deliveryByDeliverable[index].readiness}
+                        context={deliveryContextOf(deliveryByDeliverable[index])}
+                        delivery={
+                          deliveriesByDeliverable.find(
+                            (entry) => entry.deliverableId === item.id,
+                          ) ?? null
+                        }
+                      />
+                      <VersionForm
+                        deliverableId={item.id}
+                        nextVersion={nextVersion}
+                        disabledReason={versionBlocker(job.status)}
+                      />
+                    </DeliverableCard>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <EmptyState
+              title="No deliverables on this job yet"
+              description="Add the piece of work this job produces, then produce its first version."
+            />
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Add a deliverable</CardTitle>
+              <CardDescription>
+                A deliverable is the piece of work the customer receives and reviews.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DeliverableForm
+                jobId={job.id}
+                suggestedType={profile.suggestedDeliverableType}
+              />
+            </CardContent>
+          </Card>
+        </section>
+      </section>
+
       <Card>
         <CardHeader>
-          <CardTitle>Assignment and next steps</CardTitle>
+          <CardTitle>Move this job</CardTitle>
           <CardDescription>
-            Only the moves this job&rsquo;s current state allows are offered.
+            Who is working on it, and the moves this job&rsquo;s current state
+            allows. Nothing here can jump the workflow.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -153,71 +323,6 @@ export default async function ProductionJobPage({
             operators={operators}
             assignedOperatorId={job.assignedOperatorId}
           />
-        </CardContent>
-      </Card>
-
-      <QaCard ready={readiness.ready} findings={readiness.findings} />
-
-      <section aria-labelledby="deliverables" className="flex min-w-0 flex-col gap-6">
-        <h2 id="deliverables" className="text-section">
-          Deliverables
-        </h2>
-
-        {deliverables.length ? (
-          <ul className="flex flex-col gap-6">
-            {deliverables.map((item, index) => {
-              const versions = versionsByDeliverable[index];
-              const nextVersion =
-                versions.reduce(
-                  (highest, entry) => Math.max(highest, entry.version),
-                  0,
-                ) + 1;
-
-              return (
-                <li key={item.id}>
-                  <DeliverableCard
-                    deliverable={item}
-                    versions={versions}
-                    reviews={reviewsByDeliverable[index]}
-                  >
-                    <DeliveryCard
-                      deliverableId={item.id}
-                      version={item.currentVersion}
-                      readiness={deliveryByDeliverable[index].readiness}
-                      context={deliveryContextOf(deliveryByDeliverable[index])}
-                      delivery={
-                        deliveriesByDeliverable.find(
-                          (entry) => entry.deliverableId === item.id,
-                        ) ?? null
-                      }
-                    />
-                    <VersionForm
-                      deliverableId={item.id}
-                      nextVersion={nextVersion}
-                      disabledReason={versionBlocker(job.status)}
-                    />
-                  </DeliverableCard>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <EmptyState
-            title="No deliverables on this job yet"
-            description="Add the piece of work this job produces, then produce its first version."
-          />
-        )}
-      </section>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Add a deliverable</CardTitle>
-          <CardDescription>
-            A deliverable is the piece of work the customer receives and reviews.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <DeliverableForm jobId={job.id} />
         </CardContent>
       </Card>
     </Container>
