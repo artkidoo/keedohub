@@ -256,12 +256,16 @@ export type ProductionOutput = {
  *
  * Order matters and is deliberate:
  *   1. validate the upload before anything is written;
- *   2. create the asset row (a deliverable never points at a missing object);
- *   3. write the bytes to storage and confirm they landed;
- *   4. create the version row, which supersedes the previous one;
- *   5. close any review the new version has overtaken.
+ *   2. refuse work the job cannot accept before any row is created (a job with
+ *      the customer, or already delivered, cannot take a new version — checked
+ *      here as well as in the versioning path, so a refused upload never leaves
+ *      an asset row behind);
+ *   3. create the asset row (a deliverable never points at a missing object);
+ *   4. write the bytes to storage and confirm they landed;
+ *   5. create the version row, which supersedes the previous one;
+ *   6. close any review the new version has overtaken.
  *
- * If the bytes cannot be stored, the asset row created in step 2 is removed and
+ * If the bytes cannot be stored, the asset row created in step 3 is removed and
  * the failure is reported — the database is never left claiming a file that does
  * not exist (spec §21.2 rule 5). The previous version is never deleted or
  * overwritten at any point (spec §12.3 rule 1).
@@ -314,6 +318,7 @@ export async function produceVersion(
       contextType: productionJob.contextType,
       brandProfileId: productionJob.brandProfileId,
       artistProfileId: productionJob.artistProfileId,
+      status: productionJob.status,
     })
     .from(productionJob)
     .where(eq(productionJob.id, deliv.jobId))
@@ -321,6 +326,23 @@ export async function produceVersion(
 
   if (!job) {
     throw new ProductionError("Job not found", "not_found");
+  }
+
+  // The versioning path refuses these states too, but it runs after the asset
+  // row exists — checking here first means a refused upload leaves nothing
+  // behind, not even an unversioned asset row.
+  if (job.status === "customer_review") {
+    throw new ProductionError(
+      "This work is with the customer for review; a new version can only be produced after the review is decided",
+      "conflict",
+    );
+  }
+
+  if (job.status === "delivered") {
+    throw new ProductionError(
+      "This work has been delivered and its record is permanent; new work is a new job",
+      "conflict",
+    );
   }
 
   const shareWithCustomer = input.shareWithCustomer !== false;
