@@ -38,6 +38,7 @@ import { classifyPreview } from "@/domains/creative/output";
 import { deliverableExists, loadAssetForPreview } from "@/domains/creative/preview";
 import { resolveOperator } from "@/domains/production/access";
 import { createStorageProvider, StorageError } from "@/lib/storage";
+import { logServerError } from "@/lib/log";
 import { isValidUUIDv4 } from "@/lib/validation/id";
 
 /** An authenticated route, never cached and never prerendered. */
@@ -108,7 +109,7 @@ export async function GET(
     if (error instanceof StorageError && (error.kind === "NotFound" || error.kind === "Forbidden")) {
       return notFoundResponse();
     }
-    console.error("Studio asset preview failed:", error);
+    logServerError("Studio asset preview failed", error, { assetId });
     return new Response("Internal server error", { status: 500 });
   }
 

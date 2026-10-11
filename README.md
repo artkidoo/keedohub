@@ -33,7 +33,9 @@ The current public landing page expresses the same promise:
 
 ## Product Model
 
-### Customer Workspace — PLANNED
+Status labels used throughout this document: **CURRENT** (implemented and in use today), **PLANNED** (decided, not implemented), **IN PROGRESS** (partially implemented / hardening underway).
+
+### Customer Workspace — CURRENT
 
 One unified workspace per customer, covering both brand and artist contexts. The customer experience is limited to:
 
@@ -49,23 +51,27 @@ One unified workspace per customer, covering both brand and artist contexts. The
 
 There is no customer-facing canvas editor, design surface, or visual generator. Internal complexity must never leak into the customer UI.
 
-### Private KeedoHub Studio — PLANNED
+Implemented routes live under `src/app/workspace/[context]/…` (`brand` and `artist` contexts: home, requests, projects, releases, documents, marketing, assets, library, profile, notifications, work). A workspace is provisioned automatically at signup together with its Brand and Artist profiles (`databaseHooks.user.create.after` in `src/domains/auth/server.ts`).
+
+### Private KeedoHub Studio — CURRENT
 
 The Studio is where the production complexity lives: incoming requests, briefs, production jobs, internal quality assurance, creative files, versions, deliverables and delivery. It is private to authorised KeedoHub operators. See the specification for the intended Studio navigation, production queue and production capabilities.
 
-### Brand Experience — PLANNED
+Implemented routes live under `src/app/studio/…` (command centre, customers, requests, projects, production queue + production workspace, review, deliveries, library, settings). Access is **not** decided in the client or by middleware alone: every Studio page and action re-verifies operator status server-side via `requireOperator()` / `resolveOperator()` and fails closed to `notFound()`. Operators are provisioned out-of-band with `npm run studio:operator` (`scripts/studio-operator.mjs`) — never through a product route.
+
+### Brand Experience — CURRENT
 
 Structured brand information ("Brand DNA") collected once and reused in production: company details, description, industry, location, contacts, website, socials, logos, brand colours, typography, visual and imagery style, personality, voice, tone, preferred layouts, references, products and services, value proposition and target audience.
 
 Brand work covers documents (company profile, capability statement, business presentation, proposal, quotation, pitch document, sales presentation, invoice, invoice template, letterhead, business forms, agreements where appropriate, brand guidelines, brand kit, media kit, press kit and future document types), marketing creative (social graphics, social media kits, promotional graphics, product graphics, digital advertising assets, presentations, launch materials, branded content, marketing templates) and projects (company rebrand, company profile, product launch, website creative, social media kit, marketing package, presentation, brand refresh, custom creative projects).
 
-### Artist Experience — PLANNED
+### Artist Experience — CURRENT
 
 Artist identity and releases are managed as structured information: artist/stage name, biography, genre, contacts, socials, streaming links, website, visual identity, colours, creative preferences; and releases (single, EP, album, other types) with title, artist, release type and date, songs, metadata, artwork requirements, streaming information and links.
 
 Release creative packages cover cover artwork, animated cover, motion visual, lyric visual, social graphics, TikTok/Reels assets, YouTube assets, streaming assets, EPK, press assets and promotional assets. **Artists do not design these assets themselves** — KeedoHub produces them.
 
-### Production Workflow — PLANNED
+### Production Workflow — CURRENT
 
 ```text
 Customer Request
@@ -84,11 +90,13 @@ Customer Request
 
 | Layer | Concept | Status |
 | --- | --- | --- |
-| Customer | Request | PLANNED |
-| Customer | Project | PLANNED |
-| Customer | Review / Approve / Request Changes | PLANNED |
-| Customer | Deliverable, Asset, Customer Library | PLANNED |
-| KeedoHub | Production Job, Studio, Internal QA, Delivery | PLANNED |
+| Customer | Request | CURRENT |
+| Customer | Project | CURRENT |
+| Customer | Review / Approve / Request Changes | CURRENT |
+| Customer | Deliverable, Asset, Customer Library | CURRENT |
+| KeedoHub | Production Job, Studio, Internal QA, Delivery | CURRENT |
+
+**Verification caveat:** this lifecycle is implemented and covered by unit tests (lifecycle, delivery-state, review-state, status, customer-context) plus live HTTP checks of its boundaries. It has **not** been executed as one continuous browser journey from request to customer download, and it has not been run against real S3 infrastructure. See [`docs/LAUNCH_READINESS.md`](./docs/LAUNCH_READINESS.md).
 
 ## Product Principles
 
@@ -123,38 +131,52 @@ Technology is listed only if it is actually present in this repository. Status l
 | `tw-animate-css` | 1.4.0 | Animation utilities imported in `globals.css` |
 | `clsx` | 2.1.1 | Installed with the shadcn/ui setup; not imported directly in `src/` |
 | `tailwind-merge` | 3.7.0 | Installed with the shadcn/ui setup; not imported directly in `src/` |
+| `better-auth` | 1.7.5 | Email + password authentication, database-backed sessions |
+| `drizzle-orm` | 0.45.2 | Schema definition, queries and typed data access |
+| `postgres` | 3.4.9 | PostgreSQL driver used by Drizzle |
+| `zod` | 3.25.74 | Request and input validation |
 | `eslint` + `eslint-config-next` | 9.39.5 / 16.3.5 | Linting |
 | `@types/node`, `@types/react`, `@types/react-dom` | `^20`, `^19`, `^19` | Type declarations |
+| `drizzle-kit` (dev) | 0.31.10 | Migration generation (`npm run db:generate`) |
 
 Class-merge note: `src/lib/utils.ts` re-exports `cn` from the `cn` package, and components import it from there. `cn` is a `clsx` + `tailwind-merge` replacement with equivalent semantics, so `clsx` and `tailwind-merge` are currently redundant; they remain installed only as part of the shadcn/ui setup.
 
-### PLANNED — decided, not installed
+### CURRENT — implemented subsystems (no extra dependencies)
 
-Nothing in this list exists in the repository today. No configuration, schemas, migrations, clients or environment variables for these have been created.
+| Area | Implementation | Notes |
+| --- | --- | --- |
+| Database | PostgreSQL + Drizzle, 8 versioned migrations in `drizzle/` | `npm run db:migrate` |
+| Authentication | Better Auth, email + password, **database-backed** sessions | Sessions resolved server-side on every request; authorization is never decided client-side |
+| File storage | Local filesystem **and** S3-compatible providers behind one `StorageProvider` interface (`src/lib/storage/`) | Selected by `STORAGE_PROVIDER`; see [Storage](#storage) |
+| Authorization | Operator gate (`src/domains/studio/*`), workspace context gate (`src/domains/workspace/access.ts`) | Both fail closed |
+| Security headers | Framework-level headers in `next.config.ts` | See [Security](#security-headers-and-the-health-endpoint) |
+| Rate limiting | `src/lib/rate-limit.ts` + Better Auth's own limiter | **Single-instance / in-memory only** — see [Rate limiting](#rate-limiting) |
+| Operator provisioning | `npm run studio:operator` (`scripts/studio-operator.mjs`) | Out-of-band, server-side |
+| Tests | Node's built-in `node --test` runner with a TypeScript hook (`scripts/register-tests.mjs`) | 18 test files; `npm test` runs 4 of them |
+
+### PLANNED — decided, not installed
 
 | Area | Planned technology | Status |
 | --- | --- | --- |
-| Database | PostgreSQL | PLANNED |
-| ORM / schema | Drizzle ORM | PLANNED |
-| Validation | Zod | PLANNED |
-| Authentication | Better Auth or another production-grade provider | PLANNED |
-| File storage | S3-compatible object storage | PLANNED |
-| Unit/integration tests | Vitest | PLANNED |
-| End-to-end tests | Playwright | PLANNED |
-| Deployment | Vercel + managed PostgreSQL + secure object storage | PLANNED |
+| Distributed rate limiting | Redis / Upstash shared backend behind the existing `RateLimitStore` seam | PLANNED — interface exists in `src/lib/rate-limit.ts`, no backend implemented |
+| End-to-end tests | Playwright | PLANNED — not installed, no browser suite exists |
+| Unit/integration tests | Vitest | PLANNED — superseded in practice by `node --test`; do not install both |
+| Deployment | Hosting target + managed PostgreSQL + secure object storage | PLANNED — nothing deployed |
+| Error tracking / monitoring vendor | Not yet chosen | PLANNED — no vendor integrated |
+| MFA | Not yet decided | PLANNED — explicitly out of scope so far |
 
 ### FUTURE/OPTIONAL
 
 - Background/queue processing for production jobs.
 - Image, document and motion processing pipelines.
 - Notification delivery channels (email, in-app).
+- Antivirus / content sniffing on uploads (current validation is extension- and shape-based).
 
 ## Brand Identity
 
 - The only element intentionally carried forward from KeedoHub's existing brand identity is **the brand itself — above all its RED brand colour.**
-- The official colour values (and the full palette, typography and component styling) are established in the **design-system work in Phase 1**. They are not defined yet.
-- Until then: **do not invent a replacement brand palette.** The neutral tokens currently in `src/app/globals.css` are the shadcn/ui base tokens used as a placeholder so that the official identity can be applied later without redesigning the screens.
-- The current landing page is deliberately restrained and neutral for this reason.
+- The official colour values, palette, typography and component styling were established in the **design-system work in Phase 1** and are applied in `src/app/globals.css`.
+- Do not invent a replacement brand palette or restyle the design system outside an approved design task.
 
 ## Project Structure
 
@@ -166,31 +188,93 @@ keedohub/
 ├── CLAUDE.md                  # Points at AGENTS.md
 ├── README.md                  # This document
 ├── KEEDOHUB_MASTER_SPEC.md    # Authoritative product specification
+├── docs/
+│   └── LAUNCH_READINESS.md    # Launch checklist: verified / needs infra / unverified
 ├── components.json            # shadcn/ui configuration (style: base-nova, icons: lucide)
+├── drizzle.config.ts          # Drizzle-kit configuration
+├── drizzle/                   # 8 versioned SQL migrations + meta
 ├── eslint.config.mjs          # ESLint 9 flat config (next core-web-vitals + typescript)
-├── next.config.ts             # Next.js configuration (currently empty)
+├── instrumentation.ts         # Server-startup hook: validates storage config (Node runtime only)
+├── next.config.ts             # Next.js configuration + framework security headers
 ├── postcss.config.mjs         # Tailwind v4 PostCSS plugin
+├── scripts/
+│   ├── register-tests.mjs     # TypeScript resolver hook for `node --test`
+│   ├── ts-hooks.mjs           # TypeScript module hook
+│   ├── studio-operator.mjs    # Operator provisioning CLI (`npm run studio:operator`)
+│   └── _stub-*.mjs            # Next.js module stubs so tests import without a server
 ├── tsconfig.json              # TypeScript config, `@/*` → `./src/*`
 ├── package.json               # Scripts and dependencies
-├── public/                    # Default starter SVGs (unused by the landing page)
 └── src/
     ├── app/
-    │   ├── favicon.ico
-    │   ├── globals.css        # Tailwind import, theme tokens, base layer
-    │   ├── layout.tsx         # Root layout: Geist fonts, metadata, body shell
-    │   └── page.tsx           # Landing page ("Creative work, done.")
-    ├── components/
-    │   └── ui/
-    │       └── button.tsx     # shadcn/ui Button (Base UI primitive + cva variants)
-    └── lib/
-        └── utils.ts           # Re-exports `cn`
+    │   ├── api/
+    │   │   ├── auth/[...all]/  # Better Auth handler
+    │   │   ├── assets/[id]/    # Asset download route (authorized)
+    │   │   └── health/         # Liveness probe: `{ ok: true }`
+    │   ├── (auth)/             # login, signup
+    │   ├── studio/             # Private operator Studio (guarded)
+    │   ├── workspace/          # Customer workspace ([context] = brand | artist)
+    │   ├── global-error.tsx    # Safe non-technical error screen
+    │   ├── layout.tsx          # Root layout: Geist fonts, metadata, body shell
+    │   └── page.tsx            # Landing page ("Creative work, done.")
+    ├── domains/                # auth, workspace, studio, requests, projects, production,
+    │                           #   review, creative, library, releases, dashboard,
+    │                           #   profile, notifications, outputs, permissions
+    ├── lib/
+    │   ├── db/                 # Drizzle client + schema
+    │   ├── storage/            # StorageProvider interface, local + S3 providers, startup
+    │   ├── rate-limit.ts       # Rate-limit interface + single-instance store
+    │   └── log.ts              # Secret/path-redacting server logger
+    └── middleware.ts           # Edge session-cookie fast path for /workspace (UX only)
 ```
 
-Not present today: `src/domains/`, `src/services/`, route groups, API routes, middleware, database layer, authentication, storage integration, tests, CI, environment files.
+**Middleware is not authorization.** `src/middleware.ts` runs on the Edge runtime and only checks whether a session cookie is present, so unauthenticated visitors are redirected to `/login` without a server render. Every protected page and server action re-verifies the session against the database (`requireUser`, `requireWorkspaceContext`, `requireOperator`). A forged or stale cookie gains nothing. Middleware deliberately matches `/workspace/:path*` only; the Studio is protected entirely server-side.
 
 ## Development
 
 Requirements: Node.js 20+ (Next.js 16 / shadcn tooling require a current Node LTS) and npm. `package-lock.json` is committed, so npm is the package manager in use.
+
+### Local setup
+
+```bash
+# 1. Install dependencies (uses the committed package-lock.json)
+npm install
+
+# 2. Create your local environment file — copy the template and fill in the values.
+#    .env.example contains placeholders only. Never commit .env.
+cp .env.example .env
+
+# 3. Apply database migrations to your local PostgreSQL
+npm run db:migrate
+
+# 4. (Optional) Grant yourself operator access to the private Studio
+npm run studio:operator -- list
+npm run studio:operator -- add you@example.com
+
+# 5. Run the development server (Turbopack) on http://localhost:3000
+npm run dev
+```
+
+### Required environment variables
+
+All values below are documented as **placeholders** in `.env.example`. Never put real credentials in the repository, and never expose any of these through `NEXT_PUBLIC_*` — every one of them is server-side only.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | PostgreSQL connection used by Drizzle and Better Auth |
+| `BETTER_AUTH_SECRET` | Yes | Session/token secret. Generate with `openssl rand -base64 32` |
+| `BETTER_AUTH_URL` | Yes | Canonical app origin (cookies, redirects) |
+| `AUTH_TRUSTED_ORIGINS` | Production | Comma-separated extra trusted origins; **must be `https:`** in production, otherwise startup fails loudly |
+| `STORAGE_PROVIDER` | No | `local` (default) or `s3` |
+| `STORAGE_LOCAL_BASE_DIR` | When `local` | Absolute base directory for the local provider |
+| `S3_ENDPOINT` | When `s3` | S3-compatible endpoint (AWS S3, MinIO, Cloudflare R2, …) |
+| `S3_REGION` | When `s3` | Region used for SigV4 signing (required even on custom endpoints) |
+| `S3_BUCKET` | When `s3` | Private bucket holding KeedoHub assets |
+| `S3_ACCESS_KEY_ID` | When `s3` | Server-side credential |
+| `S3_SECRET_ACCESS_KEY` | When `s3` | Server-side credential |
+| `S3_FORCE_PATH_STYLE` | No | `true` for MinIO-style path addressing |
+| `RATE_LIMIT_REDIS_URL` | No | Documented seam for a shared limiter backend. **Not implemented** — setting it changes nothing today |
+
+### Commands
 
 | Task | Command | Notes |
 | --- | --- | --- |
@@ -198,12 +282,15 @@ Requirements: Node.js 20+ (Next.js 16 / shadcn tooling require a current Node LT
 | Run the development server | `npm run dev` | Turbopack dev server on http://localhost:3000 |
 | Lint | `npm run lint` | Runs `eslint` with the flat config in `eslint.config.mjs` |
 | Type check | `npx tsc --noEmit` | There is no `typecheck` script in `package.json`; use this command directly |
-| Production build | `npm run build` | `next build`; also runs TypeScript and prerenders `/` |
+| Production build | `npm run build` | `next build`; also runs TypeScript |
 | Serve the production build | `npm run start` | `next start`, after a successful build |
+| Run the test suite | `npm test` | `node --test` — see [Testing](#testing) |
+| Generate a migration | `npm run db:generate` | Drizzle-kit |
+| Apply migrations | `npm run db:migrate` | Drizzle-kit |
+| Manage Studio operators | `npm run studio:operator` | `list` / `add` / `revoke` / `restore` |
 
-Additional notes verified against `package.json`:
+Additional notes:
 
-- The only scripts defined are `dev`, `build`, `start` and `lint`. There is no test script yet.
 - Add shadcn/ui components with `npx shadcn@latest add <component>` (the `shadcn` CLI is installed).
 - `npx tsc --noEmit` writes `tsconfig.tsbuildinfo` because `incremental` is enabled in `tsconfig.json`; that file is gitignored.
 
@@ -226,11 +313,11 @@ The roadmap has exactly five phases. There is no sixth phase.
 
 | Phase | Name | Focus | Status |
 | --- | --- | --- | --- |
-| 1 | Foundation | Application foundation, authentication, database, API foundation, file storage, permissions, unified customer workspace, brand profile, artist profile, design system, navigation foundation. No complex production engines yet. | PLANNED |
-| 2 | Customer Experience | Brand and artist dashboards, documents, marketing, assets, releases, projects, requests, profile management, notifications, customer library. | PLANNED |
-| 3 | Production Workflow | Requests, projects, production jobs, deliverables, versions, reviews, approvals, deliveries, notifications, customer-to-production connection, complete request → delivery lifecycle. | PLANNED |
-| 4 | Private KeedoHub Studio | Studio authorisation, command center, customers, requests, projects, production queue, production workspace, internal production capabilities, QA, review, delivery, internal library. | PLANNED |
-| 5 | Hardening + Launch | Security, authorisation and data-isolation audits, file security, performance, responsive behaviour, accessibility, error handling, logging, backups, monitoring, deployment, E2E tests, UX polish, production readiness. | PLANNED |
+| 1 | Foundation | Application foundation, authentication, database, API foundation, file storage, permissions, unified customer workspace, brand profile, artist profile, design system, navigation foundation. No complex production engines yet. | COMPLETE |
+| 2 | Customer Experience | Brand and artist dashboards, documents, marketing, assets, releases, projects, requests, profile management, notifications, customer library. | COMPLETE |
+| 3 | Production Workflow | Requests, projects, production jobs, deliverables, versions, reviews, approvals, deliveries, notifications, customer-to-production connection, complete request → delivery lifecycle. | COMPLETE |
+| 4 | Private KeedoHub Studio | Studio authorisation, command center, customers, requests, projects, production queue, production workspace, internal production capabilities, QA, review, delivery, internal library. | COMPLETE — accepted with documented verification gaps (see [Testing](#testing)) |
+| 5 | Hardening + Launch | Security, authorisation and data-isolation audits, file security, performance, responsive behaviour, accessibility, error handling, logging, backups, monitoring, deployment, E2E tests, UX polish, production readiness. | IN PROGRESS — **not launched**. 5.2A storage init, 5.2B security headers/auth/health/rate limiting and 5.2C verification are implemented and uncommitted; deployment, infrastructure and browser verification remain open. See [`docs/LAUNCH_READINESS.md`](./docs/LAUNCH_READINESS.md) |
 
 Each phase has an objective, capabilities, security expectations, UX expectations, technical expectations and acceptance criteria in [`KEEDOHUB_MASTER_SPEC.md`](./KEEDOHUB_MASTER_SPEC.md) (sections 28 and 29).
 
@@ -238,27 +325,112 @@ Each phase has an objective, capabilities, security expectations, UX expectation
 
 **CURRENT — what exists today**
 
-- A fresh Next.js 16 application (App Router, `src/` directory, TypeScript strict mode).
-- TypeScript, ESLint, Tailwind CSS v4 and shadcn/ui configured and working.
-- One shadcn/ui component: `Button` (Base UI primitive with `cva` variants), plus the `cn` helper.
-- A single landing page at `/` presenting the product name, the headline "Creative work, done.", the supporting line and the two audience actions ("I'm a Brand", "I'm an Artist").
-- Root layout with Geist fonts, `KeedoHub` metadata and the neutral design tokens in `globals.css`.
-- Documentation: this README and the master specification.
-- `npm run lint`, `npx tsc --noEmit` and `npm run build` all pass.
+- A Next.js 16 application (App Router, `src/` directory, TypeScript strict mode) with a landing page, public login/signup, a customer workspace and a private operator Studio.
+- PostgreSQL + Drizzle ORM with 8 versioned migrations (`npm run db:migrate`).
+- Better Auth email + password authentication with **database-backed** sessions; workspace, brand and artist profiles are provisioned at signup.
+- A unified customer workspace with `brand` and `artist` contexts: requests, projects, releases, documents, marketing, assets, library, profile, notifications, work review.
+- The full production lifecycle: request → project → production job → creative production → internal QA → customer review → revision → approval → delivery → customer library.
+- The private KeedoHub Studio: command centre, customers, requests, projects, production queue and production workspace, review, deliveries, library, settings. Operator-gated server-side; provisioned out-of-band.
+- File storage behind one `StorageProvider` interface with local-filesystem and S3-compatible implementations, plus fail-fast startup validation.
+- Framework-level security headers, a `/api/health` liveness probe, `global-error.tsx`, and a secret-redacting server logger.
+- 18 test files; `npm test` runs a focused subset. No CI, no E2E runner.
+- `npm run lint`, `npx tsc --noEmit`, `npm run build` and `npm test` all pass.
 
 **NOT BUILT YET — do not assume any of the following exists**
 
-- No authentication.
-- No database, ORM, migrations or schemas.
-- No API routes or server actions.
-- No file storage integration.
-- No production workflow (no requests, projects, production jobs, deliverables, reviews, deliveries).
-- No KeedoHub Studio.
-- No customer workspace, dashboards, brand or artist profiles.
-- No notifications, libraries, or asset handling.
-- No tests and no CI.
+- **Nothing is deployed.** No hosting target, no managed PostgreSQL, no object-storage bucket.
+- No database backups, point-in-time recovery or tested restore procedure.
+- No distributed rate limiting (the limiter is single-instance/in-memory).
+- No monitoring, alerting or error-tracking vendor.
+- No end-to-end browser suite: no Playwright, and therefore no executed responsive, accessibility or keyboard checks.
+- No continuous integration pipeline.
+- No antivirus or content-type sniffing on uploads (validation is extension- and shape-based).
+- No MFA.
+- Two-customer cross-tenant traffic has not been executed with two real sessions; isolation is verified at the code and unit-test level and at the forged-id boundary level.
 
-The current build corresponds to **Phase 1 having just begun**: only the application foundation and the first public screen exist.
+**The product is not launch-ready.** See [`docs/LAUNCH_READINESS.md`](./docs/LAUNCH_READINESS.md) for the verified/unverified split.
+
+## Storage
+
+All file I/O goes through one interface in `src/lib/storage/`, so authorization, key validation, file limits, content handling and cleanup/compensation logic are identical regardless of provider.
+
+| Provider | Selected by | Status |
+| --- | --- | --- |
+| Local filesystem | `STORAGE_PROVIDER=local` (default) | For development only. Hosted-platform disk is ephemeral — do not use it in production. |
+| S3-compatible | `STORAGE_PROVIDER=s3` | AWS S3, MinIO, Cloudflare R2 and other SigV4-compatible endpoints. Path-style addressing via `S3_FORCE_PATH_STYLE=true`. |
+
+**Fail-fast behaviour (Phase 5.2A).** When `STORAGE_PROVIDER=s3`, `initStorageFromEnv()` in `src/lib/storage/startup.ts` requires every `S3_*` variable. A missing or malformed value throws at startup with a message naming the missing variable and stops the boot — **production never silently falls back to local disk**. It runs from `instrumentation.ts`, guarded by `process.env.NEXT_RUNTIME === "nodejs"` so it is not evaluated in the Edge runtime. No credentials, signed URLs or raw object paths are logged, and none of these variables is exposed to client components.
+
+All S3 variables are server-side only. None uses `NEXT_PUBLIC_*`.
+
+## Security headers and the health endpoint
+
+Set once at the framework level in `next.config.ts` (`headers()`), so they apply to every response including redirects and errors:
+
+| Header | Value | Notes |
+| --- | --- | --- |
+| `X-Content-Type-Options` | `nosniff` | Always |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | No path/query leakage across origins |
+| `X-Frame-Options` | `SAMEORIGIN` | Clickjacking protection |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Denies APIs KeedoHub never uses |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | **Production only** — deliberately never sent over plain HTTP in development |
+
+**Content Security Policy: intentionally not set globally.** The Studio asset preview route already pins its own strict policy (`default-src 'none'; sandbox`) because it serves arbitrary user-uploaded content, and Next.js emits inline scripts that a single naive global policy would break. A global CSP is an open launch item, not an oversight — do not add one without testing auth, Studio previews and every page.
+
+`GET /api/health` (`src/app/api/health/route.ts`) returns exactly `{"ok":true}` with status 200. It deliberately reports no version strings, dependency states, paths or infrastructure details. There is no database check today, so a saturated database cannot flap this probe.
+
+`src/app/global-error.tsx` renders a safe non-technical screen for uncaught errors with no error message and no stack trace. Server-side logging goes through `src/lib/log.ts` (`logServerError`), which redacts credential-shaped strings, URLs and filesystem paths and truncates the payload.
+
+## Rate limiting
+
+Two independent layers are active:
+
+1. **Better Auth's own limiter** on sign-in/sign-up (`rateLimit: { enabled: true }` in `src/domains/auth/server.ts`). This was verified live: requests returned `429` after a small burst. It is enabled explicitly — do not assume a library default.
+2. **Application-level limiting** in `src/lib/rate-limit.ts`, wired into the sensitive mutations that are not auth routes: production output uploads and review decisions (`src/domains/production/actions.ts`, `src/domains/review/actions.ts`).
+
+**Important limitation — read this before scaling.** Both limiters are **single-instance / in-memory only**. `MemoryRateLimitStore` keeps its sliding window in a `Map` inside one Node process. If KeedoHub is deployed to multiple server instances or a serverless fleet, each instance enforces its own budget and the effective limit multiplies by the instance count.
+
+`RATE_LIMIT_REDIS_URL` is documented in `.env.example` as the seam for a shared backend (Redis/Upstash) implementing the same `RateLimitStore` interface. **It is not implemented: setting it changes nothing today.** Do not describe rate limiting as distributed until a shared backend is actually wired and tested.
+
+Failure behaviour is **fail-OPEN**: if a limiter errors, the request is allowed and the bypass is logged, so a limiter outage can never lock every user out. The underlying authorization checks always still run.
+
+## Testing
+
+```bash
+npm test          # focused suite (storage, security, access boundaries, file validation)
+npx tsc --noEmit  # type check
+npm run lint      # ESLint
+npm run build     # production build
+```
+
+Tests use Node's built-in `node --test` runner with a TypeScript resolver hook (`scripts/register-tests.mjs`) and small Next.js module stubs (`scripts/_stub-*.mjs`), so they import real product modules without starting a server or touching a database. `npm test` runs four files covering 24 assertions: `src/lib/storage/startup.test.ts`, `src/lib/security.test.ts`, `src/lib/access-boundaries.test.ts` and `src/domains/production/file-validation.test.ts`.
+
+**What these tests do NOT prove.** Read this before trusting them:
+
+- They do not exercise a real S3 bucket. Storage is verified with mocks: provider selection, missing-configuration failure and signature construction. No live read/write against real infrastructure has ever run.
+- They do not exercise a real database. Access boundaries are tested through pure functions and rejected-request paths, not through seeded multi-customer rows.
+- They do not prove **two-customer isolation over real traffic**. Forged/absent identifiers are rejected, but no test drives two live sessions against each other's real resources.
+- They do not prove the full request → review → approval → delivery journey as one flow.
+- They do not test responsive layout, accessibility or keyboard navigation. **Playwright is not installed**; no browser suite exists and none of these checks has been executed.
+- They do not test production HTTPS, HSTS or CSP under a real TLS response — header presence was verified in development only.
+- They do not test distributed rate limiting (not implemented) or backups/restore (no infrastructure).
+- The other 14 `*.test.ts` files in `src/domains/**` are pure-logic suites (brief, checklist, lifecycle, delivery-state, review-state, status, …) and are **not** currently wired into `npm test`.
+
+## Deployment
+
+**Nothing is deployed.** There is no hosting account, no managed PostgreSQL instance, no object-storage bucket, no CI pipeline and no production environment variables configured. The application has only ever run on a local development server against a local PostgreSQL instance.
+
+Required before any public launch (full checklist in [`docs/LAUNCH_READINESS.md`](./docs/LAUNCH_READINESS.md)):
+
+1. Choose and configure a hosting target with separate development / preview / production environments.
+2. Provision managed PostgreSQL with automated backups and point-in-time recovery, and **perform one test restore**.
+3. Provision a private S3-compatible bucket and run a real integration test against it.
+4. Decide on and, if needed, implement distributed rate limiting.
+5. Add monitoring, alerting and error tracking.
+6. Verify production HTTPS, origins, cookies and headers against a real response.
+7. Run two-customer isolation tests and the full operator authorization matrix.
+8. Execute the complete customer journey in a browser, including responsive checks at 390×844, 768×1024 and 1440×900, plus keyboard and accessibility checks.
+9. Write a deployment and recovery runbook.
 
 ## Documentation
 
@@ -266,6 +438,7 @@ The current build corresponds to **Phase 1 having just begun**: only the applica
 | --- | --- |
 | `README.md` | Repository overview, setup, commands, rules and status |
 | `KEEDOHUB_MASTER_SPEC.md` | Authoritative product, domain, security, design and roadmap specification |
+| `docs/LAUNCH_READINESS.md` | Launch checklist: verified locally / requires infrastructure / requires verification / required before public launch |
 
 ## License
 

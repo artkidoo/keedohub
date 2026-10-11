@@ -5,6 +5,7 @@ import {
   createStorageProvider,
   StorageError,
 } from "@/lib/storage";
+import { logServerError } from "@/lib/log";
 import { isValidUUIDv4 } from "@/lib/validation/id";
 
 /** Private, read-only download. The same visibility predicate protects the file list. */
@@ -33,7 +34,7 @@ export async function GET(_request: Request, { params }: {
     if (error instanceof StorageError && error.kind === "NotFound") {
       return new Response("Not found", { status: 404 });
     }
-    console.error("Customer download unavailable:", error);
+    logServerError("Customer download unavailable", error, { context, fileId });
     return new Response("The file could not be loaded. Please try again.", { status: 503 });
   }
 }

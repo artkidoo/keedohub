@@ -18,6 +18,8 @@ import { revalidatePath } from "next/cache";
 
 import { decideReview } from "@/domains/review/data";
 import { requireWorkspaceContext } from "@/domains/workspace/access";
+import { logServerError } from "@/lib/log";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { isValidUUIDv4 } from "@/lib/validation/id";
 import type { WorkspaceContext } from "@/lib/navigation";
 import { failedReviewState, type ReviewFormState } from "./state";
@@ -38,6 +40,10 @@ export async function submitReview(
 ): Promise<ReviewFormState> {
   const workPath = `/workspace/${context}/work/${workId}`;
   const access = await requireWorkspaceContext(context, workPath);
+  const limited = await checkRateLimit(RATE_LIMITS.review, access.workspace.id);
+  if (!limited.allowed) {
+    return failedReviewState();
+  }
 
   if (!isValidUUIDv4(workId)) {
     return failedReviewState();
@@ -65,7 +71,7 @@ export async function submitReview(
       outcome: { status, href: workPath },
     };
   } catch (error) {
-    console.error("Review could not be recorded:", error);
+    logServerError("Review could not be recorded", error, { context, workId });
     return failedReviewState();
   }
 }

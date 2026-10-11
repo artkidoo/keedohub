@@ -13,30 +13,42 @@
 import { isValidUUIDv4 } from "@/lib/validation/id";
 
 export class ProductionError extends Error {
+  readonly code:
+    /** The record does not exist, or not for this caller. */
+    | "not_found"
+    /** The lifecycle state machine does not allow this move. */
+    | "invalid_transition"
+    /** A bounded value (priority) was out of range. */
+    | "invalid_priority"
+    /** An assignment named a non-existent or revoked operator. */
+    | "invalid_operator"
+    /** Submitted input failed validation before any write. */
+    | "invalid_input"
+    /** The version or deliverable is not in a state that can be reviewed. */
+    | "not_reviewable"
+    /** The internal QA gate is not satisfied, so work is not ready. */
+    | "not_ready"
+    /** Delivery preconditions are not met (Phase 3.2). */
+    | "not_deliverable"
+    /** The write would contradict existing state (duplicate, stale, …). */
+    | "conflict";
+
   constructor(
     message: string,
-    readonly code:
-      /** The record does not exist, or not for this caller. */
+    code:
       | "not_found"
-      /** The lifecycle state machine does not allow this move. */
       | "invalid_transition"
-      /** A bounded value (priority) was out of range. */
       | "invalid_priority"
-      /** An assignment named a non-existent or revoked operator. */
       | "invalid_operator"
-      /** Submitted input failed validation before any write. */
       | "invalid_input"
-      /** The version or deliverable is not in a state that can be reviewed. */
       | "not_reviewable"
-      /** The internal QA gate is not satisfied, so work is not ready. */
       | "not_ready"
-      /** Delivery preconditions are not met (Phase 3.2). */
       | "not_deliverable"
-      /** The write would contradict existing state (duplicate, stale, …). */
       | "conflict",
   ) {
     super(message);
     this.name = "ProductionError";
+    this.code = code;
   }
 }
 

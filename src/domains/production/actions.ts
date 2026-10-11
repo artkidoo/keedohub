@@ -31,6 +31,8 @@ import { ProductionError } from "./errors";
 import { isJobStatus } from "./lifecycle";
 import { createDeliverableForJob, produceVersion, updateDeliverable } from "./output";
 import { failedProductionState, type ProductionState } from "./state";
+import { logServerError } from "@/lib/log";
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit";
 import { isValidUUIDv4 } from "@/lib/validation/id";
 import type { JobStatus } from "@/lib/db/schema";
 
@@ -200,6 +202,14 @@ export async function produceVersionAction(
   formData: FormData,
 ): Promise<ProductionState> {
   const access = await requireOperator();
+  const limited = await checkRateLimit(RATE_LIMITS.upload, access.userId);
+  if (!limited.allowed) {
+    return {
+      status: "error",
+      message: "Too many uploads in a short time. Please wait a moment and try again.",
+      fieldErrors: {},
+    };
+  }
   const deliverableId = formData.get("deliverableId");
   const file = formData.get("file");
   const note = formData.get("note");
@@ -229,7 +239,7 @@ export async function produceVersionAction(
       shareWithCustomer: share === "on" || share === "true",
     });
   } catch (error) {
-    console.error("Version could not be produced:", error);
+    logServerError("Version could not be produced", error, { deliverableId });
     return {
       status: "error",
       message:

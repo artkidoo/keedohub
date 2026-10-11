@@ -29,13 +29,14 @@ export type StorageErrorKind =
   | "UnexpectedError";
 
 export class StorageError extends Error {
-  constructor(
-    readonly kind: StorageErrorKind,
-    message: string,
-    readonly cause?: unknown,
-  ) {
+  readonly kind: StorageErrorKind;
+  readonly cause?: unknown;
+
+  constructor(kind: StorageErrorKind, message: string, cause?: unknown) {
     super(message);
     this.name = "StorageError";
+    this.kind = kind;
+    this.cause = cause;
     // Ensure the stack trace uses the StorageError constructor, not Error.
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, StorageError);

@@ -1058,7 +1058,9 @@ No tests exist. There is no test runner, no test script in `package.json`, and n
 
 ## 27. Deployment and operations principles
 
-### 27.1 Deployment (PLANNED)
+### 27.1 Deployment (specified; NOT YET DONE)
+
+No environment has been deployed. Nothing below exists yet — it is the target state, not the current state. See `docs/LAUNCH_READINESS.md` for what is missing.
 
 | Element | Direction |
 | --- | --- |
@@ -1073,7 +1075,7 @@ No tests exist. There is no test runner, no test script in `package.json`, and n
 2. **Migrations are versioned and reviewed.** Schema changes are applied through migrations, never by hand-editing a live database.
 3. **Backups are verified, not assumed.** A backup that has never been restored is not a backup.
 4. **Secrets live in environment configuration**, are never committed, and are never exposed to the client bundle.
-5. **Observability from Phase 5 (PLANNED).** Errors and failures are logged with enough context to reproduce (workspace scope, action, actor), without logging sensitive file contents.
+5. **Observability (PARTIAL — Phase 5.2B).** Errors and failures are logged with enough context to reproduce (workspace scope, action, actor), without logging sensitive file contents. Server logging is centralised in `src/lib/log.ts`, which redacts credential-shaped strings, URLs and filesystem paths. **No monitoring, alerting or error-tracking vendor is integrated yet.**
 6. **Fail visibly.** Silent failures in production are worse than loud ones; production issues must surface to the operator.
 7. **Reversible changes.** Deployments and migrations should be reversible, or their irreversibility must be a recorded, deliberate decision.
 8. **Zero-surprise rollouts.** The presence of unfinished features is not acceptable in production; features ship when they are complete for their phase.
@@ -1088,7 +1090,7 @@ Production readiness requires: error handling reviewed, logging in place, backup
 
 Phases are sequential: a phase begins when the previous phase's Definition of Done (§29) is satisfied. Security and isolation requirements are never deferred to a later phase than the one that creates the data or surface they protect.
 
-### Phase 1 — Foundation (PLANNED)
+### Phase 1 — Foundation (COMPLETE)
 
 **Objective:** a real, secure application foundation with a unified customer workspace shell, profiles and a design system — and no production engines.
 
@@ -1096,7 +1098,7 @@ Phases are sequential: a phase begins when the previous phase's Definition of Do
 
 **Explicitly not in this phase:** complex production engines, production jobs, Studio, reviews, deliveries, library behaviour.
 
-### Phase 2 — Customer Experience (PLANNED)
+### Phase 2 — Customer Experience (COMPLETE)
 
 **Objective:** the customer can see and manage everything they have, and can ask for work.
 
@@ -1104,7 +1106,7 @@ Phases are sequential: a phase begins when the previous phase's Definition of Do
 
 **Explicitly not in this phase:** production internals, the Studio, operator tooling.
 
-### Phase 3 — Production Workflow (PLANNED)
+### Phase 3 — Production Workflow (COMPLETE)
 
 **Objective:** work can travel from request to delivery as a connected, auditable lifecycle.
 
@@ -1112,7 +1114,7 @@ Phases are sequential: a phase begins when the previous phase's Definition of Do
 
 **Explicitly not in this phase:** the private Studio experience (production may be operated through minimal internal means, but the Studio as a product is Phase 4).
 
-### Phase 4 — Private KeedoHub Studio (PLANNED)
+### Phase 4 — Private KeedoHub Studio (COMPLETE — accepted with documented verification gaps)
 
 **Objective:** KeedoHub can run production at volume through its own environment.
 
@@ -1120,7 +1122,7 @@ Phases are sequential: a phase begins when the previous phase's Definition of Do
 
 **Explicitly not in this phase:** customer-facing tooling of any kind.
 
-### Phase 5 — Hardening + Launch (PLANNED)
+### Phase 5 — Hardening + Launch (IN PROGRESS)
 
 **Objective:** the system is secure, observable, fast, accessible and ready for real customers.
 
@@ -1128,15 +1130,17 @@ Phases are sequential: a phase begins when the previous phase's Definition of Do
 
 **Explicitly not in this phase:** new product capability. Phase 5 hardens what exists; it does not add new domains.
 
+**Progress at Phase 5.2D — the product is NOT launched.** Implemented and verified locally: S3-compatible storage initialization with fail-fast startup validation (`instrumentation.ts`, `src/lib/storage/startup.ts`); framework-level security headers; explicit `trustedOrigins` validation with production `https:` enforcement; Better Auth rate limiting enabled; application-level rate limiting on uploads and review decisions; a minimal `/api/health` liveness probe; `global-error.tsx`; secret-redacting server logging; access-boundary tests. Still open: nothing is deployed; no managed PostgreSQL, backups, PITR or tested restore; no S3 bucket or real-service integration test; rate limiting is single-instance/in-memory only; no monitoring, alerting or error tracking; no global CSP; no two-customer live isolation test; no complete operator authorization matrix; no browser/E2E suite (Playwright not installed) so no responsive, accessibility or keyboard verification. Full checklist: `docs/LAUNCH_READINESS.md`.
+
 ### Phase summary table
 
 | Phase | Name | Status | Gates the next phase |
 | --- | --- | --- | --- |
-| 1 | Foundation | PLANNED | Yes |
-| 2 | Customer Experience | PLANNED | Yes |
-| 3 | Production Workflow | PLANNED | Yes |
-| 4 | Private KeedoHub Studio | PLANNED | Yes |
-| 5 | Hardening + Launch | PLANNED | Launch |
+| 1 | Foundation | COMPLETE | Yes |
+| 2 | Customer Experience | COMPLETE | Yes |
+| 3 | Production Workflow | COMPLETE | Yes |
+| 4 | Private KeedoHub Studio | COMPLETE — accepted with documented verification gaps | Yes |
+| 5 | Hardening + Launch | IN PROGRESS — **not launched**. Storage init, security headers, auth origin validation, health endpoint, rate limiting and access-boundary tests are implemented; deployment, infrastructure, distributed rate limiting, browser/E2E and a11y verification remain open. See `docs/LAUNCH_READINESS.md`. | Launch |
 
 ## 29. Definition of Done
 
@@ -1318,16 +1322,18 @@ Lifecycle summary:
 | Next.js application, App Router, `src/` directory | **CURRENT** |
 | TypeScript (strict), ESLint, Tailwind v4, shadcn/ui foundation | **CURRENT** |
 | Landing page at `/` ("Creative work, done.") | **CURRENT** |
-| Button component and `cn` helper | **CURRENT** |
-| Repository documentation (README, this specification) | **CURRENT** |
-| Neutral design tokens (placeholder; RED brand values pending) | **CURRENT** |
-| Design system (typography, colour, components, motion) | **PLANNED** (Phase 1) |
-| Authentication, database, ORM, validation, storage, permissions | **PLANNED** (Phase 1) |
-| Unified workspace, Brand Profile, Artist Profile | **PLANNED** (Phase 1) |
-| Customer dashboard, documents, marketing, releases, requests, library | **PLANNED** (Phase 2) |
-| Requests, projects, production jobs, deliverables, versions, reviews, approvals, deliveries | **PLANNED** (Phase 3) |
-| Private KeedoHub Studio and internal production capabilities | **PLANNED** (Phase 4) |
-| Security/isolation audits, monitoring, backups, E2E tests, launch | **PLANNED** (Phase 5) |
+| Public login/signup, Button component and `cn` helper | **CURRENT** |
+| Repository documentation (README, this specification, `docs/LAUNCH_READINESS.md`) | **CURRENT** |
+| Design system (typography, colour, components, motion) | **COMPLETE** (Phase 1) |
+| Authentication (email + password, DB-backed sessions), database, ORM, validation, permissions | **COMPLETE** (Phase 1) |
+| File storage abstraction: local + S3-compatible providers with fail-fast startup validation | **COMPLETE** (Phase 5.2A) |
+| Unified workspace, Brand Profile, Artist Profile | **COMPLETE** (Phase 1) |
+| Customer dashboard, documents, marketing, releases, requests, library | **COMPLETE** (Phase 2) |
+| Requests, projects, production jobs, deliverables, versions, reviews, approvals, deliveries | **COMPLETE** (Phase 3) |
+| Private KeedoHub Studio and internal production capabilities | **COMPLETE** (Phase 4) |
+| Security headers, auth origin validation, health endpoint, rate limiting, error boundary, redacted logging | **COMPLETE** (Phase 5.2B) — rate limiting is single-instance/in-memory only |
+| Access-boundary tests and live anonymous/forged-id rejection checks | **COMPLETE** (Phase 5.2C) |
+| Managed PostgreSQL with verified backups, monitoring, E2E browser tests, deployment | **NOT DONE** (Phase 5) — nothing deployed |
 | Automation inside production capabilities | **FUTURE/OPTIONAL** |
 | Workspace team members, billing, localisation, native apps | **FUTURE/OPTIONAL** |
 
@@ -1387,6 +1393,7 @@ Lifecycle summary:
 | Version | Change |
 | --- | --- |
 | 1.0 | Initial master specification: product vision, principles, customer experience, domain models (workspace, brand, artist, request, project, production job, deliverable, asset, review, delivery, library), Studio, security, isolation, storage, notifications, design and terminology rules, technical architecture, testing, operations, five-phase roadmap, definitions of done, non-goals and appendices. |
+| 1.1 | Status refresh (Phase 5.2D): Phases 1–4 marked COMPLETE (Phase 4 accepted with documented verification gaps), Phase 5 marked IN PROGRESS. §27.1 relabelled from PLANNED to "specified; NOT YET DONE" with an explicit statement that nothing is deployed. §27.2 item 5 updated to PARTIAL for observability. Appendix B rewritten to reflect implemented storage, auth, security headers, health endpoint, rate limiting and access-boundary tests, and to record managed PostgreSQL / backups / monitoring / E2E / deployment as NOT DONE. No product behaviour or requirements were changed. |
 
 ---
 

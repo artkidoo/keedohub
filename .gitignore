@@ -13,6 +13,16 @@
 # testing
 /coverage
 
+# Playwright artifacts (Phase 5.3A) — traces/screenshots are local debugging
+# output, not source. Regenerated on every run.
+/test-results/
+/playwright-report/
+/blob-report/
+/.playwright/
+
+# Ad-hoc local run logs
+*.log
+
 # next.js
 /.next/
 /out/
