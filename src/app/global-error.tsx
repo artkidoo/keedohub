@@ -14,6 +14,7 @@ export default function GlobalError() {
     <html lang="en">
       <body>
         <main
+          id="main"
           style={{
             minHeight: "100dvh",
             display: "flex",

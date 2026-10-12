@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
  * to the main content region. Rendered once in the root layout.
  */
 export function SkipLink({
-  href = "#main-content",
+  href = "#main",
   className,
 }: {
   href?: string;

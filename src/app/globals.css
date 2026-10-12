@@ -12,6 +12,11 @@
    ========================================================================== */
 
 :root {
+  /* Light is the browser-default palette; declaring it explicitly keeps native
+     form controls, scrollbars and the canvas in step with the tokens rather
+     than on whatever the OS default happens to be. */
+  color-scheme: light;
+
   /* Brand red ramp — single source of truth for the KeedoHub red */
   --kh-red-50: oklch(0.972 0.014 25);
   --kh-red-100: oklch(0.943 0.032 25);
@@ -69,6 +74,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --kh-background: var(--kh-ink-990);
   --kh-foreground: var(--kh-ink-25);
   --kh-surface: var(--kh-ink-950);
