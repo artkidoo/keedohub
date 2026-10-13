@@ -41,7 +41,7 @@ export default async function LibraryPage({ params }: LibraryPageProps) {
   const copy = libraryCopy[context];
 
   return (
-    <Container className="flex min-w-0 flex-col gap-8 py-8 sm:py-12 [overflow-wrap:anywhere]">
+    <Container className="flex min-w-0 flex-col gap-8 py-8 sm:gap-10 sm:py-12 [overflow-wrap:anywhere]">
       <PageHeader eyebrow={copy.eyebrow} title={copy.title} description={copy.description} />
       <Suspense fallback={<LibraryRowsSkeleton />}>
         <LibraryList context={context} access={access} copy={copy} />

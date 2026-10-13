@@ -15,7 +15,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SignOutMenuItem } from "@/domains/auth/sign-out-menu-item";
-import { navIcon, workspaceContexts, type NavItem } from "@/lib/navigation";
+import {
+  navIcon,
+  workspaceContexts,
+  type NavItem,
+  type WorkspaceContext,
+} from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 type WorkspaceHeaderProps = {
@@ -29,6 +34,11 @@ type WorkspaceHeaderProps = {
   homeHref?: string;
   /** Slot for notifications and account controls once authentication exists. */
   actions?: ReactNode;
+  /**
+   * Contexts this customer may open. A single-context account never sees
+   * the "Switch workspace" group; legacy accounts see both.
+   */
+  contexts?: readonly WorkspaceContext[];
   /** Real unread notification count for the current context. */
   unreadNotifications?: number;
   className?: string;
@@ -46,6 +56,7 @@ function WorkspaceHeader({
   title,
   homeHref = "/workspace",
   actions,
+  contexts,
   unreadNotifications,
   className,
 }: WorkspaceHeaderProps) {
@@ -66,6 +77,7 @@ function WorkspaceHeader({
           items={items}
           title={contextLabel ? `${contextLabel} workspace` : "KeedoHub"}
           navLabel={navLabel}
+          contexts={contexts}
           unreadNotifications={unreadNotifications}
         />
       ) : null}
@@ -97,14 +109,18 @@ function WorkspaceHeader({
 
       <div className="flex items-center gap-1.5">
         {actions}
-        <WorkspaceMenu />
+        <WorkspaceMenu contexts={contexts} />
       </div>
     </header>
   );
 }
 
 /** Compact menu of real destinations. Grows into the account menu later. */
-function WorkspaceMenu() {
+function WorkspaceMenu({ contexts }: { contexts?: readonly WorkspaceContext[] }) {
+  const switchable = contexts
+    ? workspaceContexts.filter((entry) => contexts.includes(entry.id))
+    : workspaceContexts;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -117,18 +133,22 @@ function WorkspaceMenu() {
         <ChevronDown aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent>
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Switch workspace</DropdownMenuLabel>
-          {workspaceContexts.map((context) => {
-            const Icon = navIcon(context.icon);
-            return (
-              <DropdownMenuLinkItem key={context.id} href={context.href}>
-                <Icon aria-hidden />
-                {context.label}
-              </DropdownMenuLinkItem>
-            );
-          })}
-        </DropdownMenuGroup>
+        {/* Single-context accounts have nothing to switch between, so the
+            group is omitted rather than rendered with one dead option. */}
+        {switchable.length > 1 ? (
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Switch workspace</DropdownMenuLabel>
+            {switchable.map((context) => {
+              const Icon = navIcon(context.icon);
+              return (
+                <DropdownMenuLinkItem key={context.id} href={context.href}>
+                  <Icon aria-hidden />
+                  {context.label}
+                </DropdownMenuLinkItem>
+              );
+            })}
+          </DropdownMenuGroup>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuLinkItem href="/">
           <ArrowUpRight aria-hidden />

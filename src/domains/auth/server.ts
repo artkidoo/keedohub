@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
+import { z } from "zod";
 
 import { getDb } from "@/lib/db";
 import {
@@ -12,6 +13,7 @@ import {
   verification,
   workspace,
 } from "@/lib/db/schema";
+import { isAccountType } from "@/lib/account-type";
 
 /**
  * Explicit production origins for Better Auth (Phase 5.2B).
@@ -70,6 +72,30 @@ export const auth = betterAuth({
     enabled: true,
     minPasswordLength: 10,
   },
+  /**
+   * Account type at sign-up (Part 4 of the customer-experience upgrade).
+   *
+   * The choice is made on the sign-up form and travels through Better Auth's
+   * own endpoint, where it is validated (`brand` or `artist`, nothing else)
+   * and persisted to `user.account_type` in the SAME insert as the user row.
+   * The `user.create.after` hook below then copies it onto the workspace —
+   * the row every authorization decision reads — so an account can never be
+   * created without a type, and a client can never create a "both contexts"
+   * account by skipping a follow-up request. Pre-existing accounts keep a
+   * NULL type and their original dual-context behaviour.
+   */
+  user: {
+    additionalFields: {
+      accountType: {
+        type: "string",
+        required: true,
+        input: true,
+        validator: {
+          input: z.enum(["brand", "artist"]),
+        },
+      },
+    },
+  },
   session: {
     // 30 days with daily refresh while active: unchanged in this checkpoint.
     // Shortening would churn customer sessions without new evidence; the
@@ -87,10 +113,21 @@ export const auth = betterAuth({
             createdUser.id.slice(0, 8) ||
             Math.random().toString(36).slice(2, 10);
 
+          // Copy the sign-up choice onto the workspace — the row that
+          // authorization reads. The value was already validated by the
+          // sign-up endpoint; anything unexpected degrades to NULL (the
+          // legacy dual-context behaviour) rather than granting a context.
+          const rawAccountType = (createdUser as { accountType?: unknown })
+            .accountType;
+          const accountType = isAccountType(rawAccountType)
+            ? rawAccountType
+            : null;
+
           await db.insert(workspace).values({
             userId: createdUser.id,
             name: `${createdUser.name || "Your"} workspace`,
             slug: `ws-${slug}`,
+            accountType,
           });
 
           const ws = await db.query.workspace.findFirst({

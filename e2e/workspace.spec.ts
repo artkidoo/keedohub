@@ -16,8 +16,10 @@ test.afterAll(async () => {
 // ---------------------------------------------------------------------------
 
 test.describe("brand and artist context navigation", () => {
-  test("brand context shows brand sections and hides artist vocabulary", async ({ page }) => {
-    await signUpWithRetry(page, "brand-nav");
+  test("a brand account sees brand sections and no artist vocabulary", async ({ page }) => {
+    await signUpWithRetry(page, "brand-nav", "brand");
+    await expect(page).toHaveURL(/\/workspace\/brand/);
+
     await page.goto("/workspace/brand");
 
     await expect(page.locator("body")).toContainText("Documents");
@@ -25,25 +27,25 @@ test.describe("brand and artist context navigation", () => {
     await expect(page.locator("body")).not.toContainText("Releases");
   });
 
-  test("artist context shows artist sections and hides brand vocabulary", async ({ page }) => {
-    await signUpWithRetry(page, "artist-nav");
+  test("an artist account sees artist sections and no brand vocabulary", async ({ page }) => {
+    await signUpWithRetry(page, "artist-nav", "artist");
+    await expect(page).toHaveURL(/\/workspace\/artist/);
+
     await page.goto("/workspace/artist");
 
     await expect(page.locator("body")).toContainText("Releases");
     await expect(page.locator("body")).not.toContainText("Marketing");
   });
 
-  test("switching context swaps the section set", async ({ page }) => {
-    await signUpWithRetry(page, "ctx-switch");
-
-    await page.goto("/workspace/brand");
-    await expect(page.locator("body")).toContainText("Documents");
-
+  test("a typed account is offered no context switcher", async ({ page }) => {
+    await signUpWithRetry(page, "no-switcher", "artist");
     await page.goto("/workspace/artist");
-    await expect(page.locator("body")).toContainText("Releases");
 
-    await page.goto("/workspace/brand");
-    await expect(page.locator("body")).toContainText("Documents");
+    // Nothing to switch between: the switcher renders nothing at all rather
+    // than offering a second context the account may not open.
+    await expect(
+      page.getByRole("navigation", { name: "Workspace context" }),
+    ).toHaveCount(0);
   });
 });
 
@@ -57,39 +59,62 @@ const viewports = [
   { name: "desktop", width: 1440, height: 900 },
 ];
 
-const principalScreens = [
-  "/workspace/brand",
-  "/workspace/brand/requests",
-  "/workspace/brand/documents",
-  "/workspace/artist",
-  "/workspace/artist/releases",
-  "/workspace/brand/projects",
+// Each account only reaches its own context, so the principal screens are
+// grouped per account type and checked with a real account of that type.
+const principalScreensByAccount: {
+  accountType: "brand" | "artist";
+  label: string;
+  screens: string[];
+}[] = [
+  {
+    accountType: "brand",
+    label: "responsive-brand",
+    screens: [
+      "/workspace/brand",
+      "/workspace/brand/requests",
+      "/workspace/brand/documents",
+      "/workspace/brand/projects",
+    ],
+  },
+  {
+    accountType: "artist",
+    label: "responsive-artist",
+    screens: ["/workspace/artist", "/workspace/artist/releases"],
+  },
 ];
 
 test.describe("responsive layout at principal screens", () => {
-  test("no horizontal overflow at 390x844, 768x1024 and 1440x900", async ({ page }) => {
-    await signUpWithRetry(page, "responsive");
+  for (const group of principalScreensByAccount) {
+    // This journey visits every principal screen at three viewports — 12 full
+    // page loads plus a sign-up. The default per-test timeout is not enough for
+    // a dev-server compile of each route, so the budget is tripled here rather
+    // than by dropping a viewport, a screen, or an assertion.
+    test(`no horizontal overflow on ${group.accountType} screens at 390x844, 768x1024 and 1440x900`, async ({ page }) => {
+      test.slow();
 
-    const overflow: string[] = [];
+      await signUpWithRetry(page, group.label, group.accountType);
 
-    for (const vp of viewports) {
-      await page.setViewportSize({ width: vp.width, height: vp.height });
+      const overflow: string[] = [];
 
-      for (const path of principalScreens) {
-        await page.goto(path);
-        await expect(page.locator("main")).toBeVisible();
+      for (const vp of viewports) {
+        await page.setViewportSize({ width: vp.width, height: vp.height });
 
-        const overflowPx = await page.evaluate(() => {
-          const doc = document.documentElement;
-          return doc.scrollWidth - doc.clientWidth;
-        });
+        for (const path of group.screens) {
+          await page.goto(path);
+          await expect(page.locator("main")).toBeVisible();
 
-        if (overflowPx > 1) {
-          overflow.push(`${path} @ ${vp.width}x${vp.height}: +${overflowPx}px`);
+          const overflowPx = await page.evaluate(() => {
+            const doc = document.documentElement;
+            return doc.scrollWidth - doc.clientWidth;
+          });
+
+          if (overflowPx > 1) {
+            overflow.push(`${path} @ ${vp.width}x${vp.height}: +${overflowPx}px`);
+          }
         }
       }
-    }
 
-    expect(overflow, `horizontal overflow detected:\n${overflow.join("\n")}`).toEqual([]);
-  });
+      expect(overflow, `horizontal overflow detected:\n${overflow.join("\n")}`).toEqual([]);
+    });
+  }
 });

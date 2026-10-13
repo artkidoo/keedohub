@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { ContextSwitcher } from "@/components/layout/context-switcher";
 import { NavList } from "@/components/layout/nav-list";
+import { SignOutControl } from "@/domains/auth/sign-out-control";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Sheet,
@@ -12,7 +13,7 @@ import {
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import type { NavItem } from "@/lib/navigation";
+import type { NavItem, WorkspaceContext } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 type MobileNavProps = {
@@ -21,6 +22,11 @@ type MobileNavProps = {
   title: string;
   /** Accessible name for the navigation region. */
   navLabel: string;
+  /**
+   * Contexts this customer may open; drives the switcher at the top of the
+   * panel. Omitted means both (legacy dual-context accounts).
+   */
+  contexts?: readonly WorkspaceContext[];
   /** Real unread notification count for the current context. */
   unreadNotifications?: number;
 };
@@ -30,7 +36,13 @@ type MobileNavProps = {
  * mobile and desktop — the items, labels, active states and ordering all come
  * from one configuration (spec §9).
  */
-function MobileNav({ items, title, navLabel, unreadNotifications }: MobileNavProps) {
+function MobileNav({
+  items,
+  title,
+  navLabel,
+  contexts,
+  unreadNotifications,
+}: MobileNavProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -50,13 +62,16 @@ function MobileNav({ items, title, navLabel, unreadNotifications }: MobileNavPro
           <SheetCloseButton label="Close navigation" />
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-5">
-          <ContextSwitcher className="mb-6" />
+          <ContextSwitcher className="mb-6" contexts={contexts} />
           <NavList
             items={items}
             label={navLabel}
             onNavigate={() => setOpen(false)}
             unreadNotifications={unreadNotifications}
           />
+        </div>
+        <div className="border-t border-border px-4 py-3">
+          <SignOutControl as="button" />
         </div>
       </SheetContent>
     </Sheet>

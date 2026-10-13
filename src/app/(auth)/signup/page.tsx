@@ -10,7 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 export const metadata = { title: "Create your workspace — KeedoHub" };
 
 /**
- * Sign-up screen. Workspace + Brand/Artist contexts are provisioned server-side.
+ * Sign-up screen. The account type chosen here decides which workspace is
+ * entered; workspace + Brand/Artist contexts are provisioned server-side.
  * Signed-in visitors are returned to their workspace instead.
  */
 export default async function SignupPage({
@@ -30,8 +31,8 @@ export default async function SignupPage({
       <div className="flex flex-col gap-2">
         <h1 className="text-title text-balance">Create your workspace</h1>
         <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
-          One workspace for you and KeedoHub — with a Brand and an Artist
-          context ready when you are.
+          One workspace for you and KeedoHub — tell us whether you create as a
+          brand or an artist, and your workspace opens ready for your work.
         </p>
       </div>
 

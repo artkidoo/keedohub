@@ -20,10 +20,32 @@ export async function clearSession(page: Page): Promise<void> {
   await page.context().clearCookies();
 }
 
-/** Signs up through the real form and lands on the workspace home. */
+/**
+ * The two account types a customer may choose at sign-up. New accounts are
+ * strictly separated: a brand account never reaches Artist OS and vice versa
+ * (legacy accounts without a type predate this and keep both contexts).
+ */
+export type SignupAccountType = "brand" | "artist";
+
+/** Selects the account-type card on the real sign-up form. */
+async function chooseAccountType(
+  page: Page,
+  accountType: SignupAccountType,
+): Promise<void> {
+  const name =
+    accountType === "brand" ? /Brand \/ business/ : /Artist \/ music/;
+  await page.getByRole("radio", { name }).check();
+}
+
+/**
+ * Signs up through the real form and lands in the chosen workspace context.
+ * The account type defaults to "brand" — every helper caller states its type
+ * implicitly or explicitly, never accidentally.
+ */
 export async function signUp(
   page: Page,
   label: string,
+  accountType: SignupAccountType = "brand",
 ): Promise<{ email: string; password: string }> {
   const email = e2eEmail(label);
   const password = E2E_PASSWORD;
@@ -32,6 +54,7 @@ export async function signUp(
   await page.getByLabel("Name").fill(`E2E ${label}`);
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
+  await chooseAccountType(page, accountType);
   await page.getByRole("button", { name: "Create workspace" }).click();
 
   await expect(page).toHaveURL(/\/workspace(\/|\?|$)/, { timeout: 30_000 });
@@ -69,6 +92,7 @@ const SIGNUP_REFUSED = "We could not create your account";
 export async function signUpWithRetry(
   page: Page,
   label: string,
+  accountType: SignupAccountType = "brand",
   attempts = 6,
 ): Promise<{ email: string; password: string }> {
   const email = e2eEmail(label);
@@ -80,6 +104,7 @@ export async function signUpWithRetry(
     await page.getByLabel("Name").fill(`E2E ${label}`);
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password").fill(password);
+    await chooseAccountType(page, accountType);
     await page.getByRole("button", { name: "Create workspace" }).click();
 
     // Wait for whichever of the two outcomes appears first.

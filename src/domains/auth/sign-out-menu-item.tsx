@@ -1,30 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { SignOutControl } from "@/domains/auth/sign-out-control";
 
-import { authClient } from "@/domains/auth/client";
-import {
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
-
-/** Server-backed sign-out. Clears the session, then returns to the public site. */
+/**
+ * Sign-out as it appears inside the desktop workspace menu.
+ *
+ * The control itself lives in `sign-out-control.tsx` and is shared with the
+ * mobile panel; this wrapper only adapts it to the menu surface so both
+ * layouts offer exactly the same behaviour.
+ */
 export function SignOutMenuItem() {
-  const router = useRouter();
-  const [pending, setPending] = useState(false);
-
-  return (
-    <DropdownMenuItem
-      disabled={pending}
-      onSelect={async (event) => {
-        event.preventDefault();
-        setPending(true);
-        await authClient.signOut();
-        router.push("/");
-        router.refresh();
-      }}
-    >
-      {pending ? "Signing out…" : "Sign out"}
-    </DropdownMenuItem>
-  );
+  return <SignOutControl as="menuitem" />;
 }

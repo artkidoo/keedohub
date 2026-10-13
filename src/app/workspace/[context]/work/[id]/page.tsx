@@ -60,7 +60,7 @@ export default async function WorkPage({ params }: {
   if (!reviewable) notFound();
 
   return (
-    <Container className="flex min-w-0 flex-col gap-8 py-8 [overflow-wrap:anywhere] sm:py-12">
+    <Container className="flex min-w-0 flex-col gap-8 py-8 sm:gap-10 sm:py-12 [overflow-wrap:anywhere]">
       <PageHeader
         title={work.name}
         eyebrow={work.projectName}

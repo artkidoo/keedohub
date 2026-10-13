@@ -10,7 +10,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "studio:operator": "node scripts/studio-operator.mjs",
-    "test": "node --import ./scripts/register-tests.mjs --test src/lib/storage/startup.test.ts src/lib/security.test.ts src/lib/access-boundaries.test.ts src/lib/theme.test.ts src/domains/production/file-validation.test.ts",
+    "test": "node --import ./scripts/register-tests.mjs --test src/lib/storage/startup.test.ts src/lib/security.test.ts src/lib/access-boundaries.test.ts src/lib/account-type.test.ts src/lib/theme.test.ts src/domains/production/file-validation.test.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {

@@ -7,6 +7,7 @@ import type {
   BrandProfile,
   Workspace,
 } from "@/lib/db/schema";
+import { accountTypeOf, contextAllowedForAccount } from "@/lib/account-type";
 
 /**
  * Workspace authorization boundary.
@@ -54,9 +55,16 @@ export type WorkspaceContextAccess = WorkspaceAccess & {
 /**
  * Require workspace access AND the requested Brand/Artist context.
  *
+ * Two checks, both server-side, both against database rows:
+ *   1. Account-type separation — an account that chose one context at
+ *      sign-up never reaches the other (a legacy, untyped account keeps
+ *      access to both, exactly as before the field existed).
+ *   2. Context ownership — the requested context's profile must belong to
+ *      the caller's own workspace.
+ *
  * @param context the workspace context segment from the URL
- * @returns the verified access triple, or a 404 when the context does not
- *   belong to the caller's workspace (never a 403 that reveals existence).
+ * @returns the verified access triple, or a 404 when the context is not
+ *   reachable by the caller (never a 403 that reveals existence).
  */
 export async function requireWorkspaceContext(
   context: string,
@@ -68,6 +76,14 @@ export async function requireWorkspaceContext(
   }
 
   const access = await requireWorkspace(returnTo);
+
+  // Account type is read from the workspace row — never from the URL, a
+  // query parameter, a header or client state. A denied context is a 404,
+  // indistinguishable from a route that does not exist (spec §19.5).
+  if (!contextAllowedForAccount(accountTypeOf(access.workspace), context)) {
+    notFound();
+  }
+
   const db = getDb();
 
   const brand = await db.query.brandProfile.findFirst({

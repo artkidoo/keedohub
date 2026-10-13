@@ -18,7 +18,7 @@ import { NextRequest } from "next/server";
 
 import { getDb } from "@/lib/db";
 import { auth } from "@/domains/auth/server";
-import { assertValidUUIDv4 } from "@/lib/validation/id";
+import { isValidUUIDv4 } from "@/lib/validation/id";
 import {
   createStorageProvider,
   notFound as storageNotFound,
@@ -45,7 +45,12 @@ async function resolveAssetAccess(
   assetId: string,
   userId: string,
 ): Promise<string | null> {
-  assertValidUUIDv4(assetId);
+  // A malformed id can never name a real asset: treat it as a lookup miss
+  // (404) rather than letting validation throw a 500. The id format is not
+  // secret, so distinguishing "malformed" from "absent" discloses nothing.
+  if (!isValidUUIDv4(assetId)) {
+    return null;
+  }
 
   const db = getDb();
 

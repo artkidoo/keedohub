@@ -47,7 +47,7 @@ export default async function NewRequestPage({ params }: NewRequestPageProps) {
   }
 
   return (
-    <Container className="flex flex-col gap-8 py-8 sm:gap-10 sm:py-12">
+    <Container className="flex min-w-0 flex-col gap-8 py-8 sm:gap-10 sm:py-12 [overflow-wrap:anywhere]">
       <PageHeader
         breadcrumb={[
           { label: `${meta.label} workspace`, href: meta.href },

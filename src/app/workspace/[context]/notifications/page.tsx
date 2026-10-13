@@ -50,7 +50,7 @@ export default async function NotificationsPage({
   const copy = notificationCopy[context];
 
   return (
-    <Container className="flex min-w-0 flex-col gap-8 py-8 sm:py-12 [overflow-wrap:anywhere]">
+    <Container className="flex min-w-0 flex-col gap-8 py-8 sm:gap-10 sm:py-12 [overflow-wrap:anywhere]">
       <PageHeader
         eyebrow={copy.eyebrow}
         title={copy.title}

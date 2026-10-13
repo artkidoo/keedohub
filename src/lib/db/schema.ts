@@ -30,6 +30,17 @@ export const user = pgTable("user", {
     .default(false)
     .$type<boolean>(),
   image: text("image"),
+  /**
+   * Account type chosen at sign-up ("brand" | "artist").
+   *
+   * This column is the Better Auth *intake* field: the sign-up endpoint
+   * refuses to create a user without a valid value (see `additionalFields`
+   * in src/domains/auth/server.ts), and the workspace row — not this column —
+   * is what every authorization decision reads. NULL only for accounts that
+   * predate the field; they keep the original dual-context behaviour and are
+   * never silently converted.
+   */
+  accountType: text("account_type"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -146,10 +157,29 @@ export const workspace = pgTable(
     name: text("name").notNull(),
     /** Stable, URL-safe identifier. */
     slug: text("slug").notNull().unique(),
+    /**
+     * Account type chosen at sign-up ("brand" | "artist") — the single
+     * source of truth for customer authorization and default routing.
+     *
+     * Copied from the Better Auth intake field inside the user-create hook
+     * (src/domains/auth/server.ts), so it is written atomically with the
+     * workspace and can never be set from client state. NULL only for
+     * accounts that predate the field: they keep the original dual-context
+     * behaviour rather than being silently converted.
+     */
+    accountType: text("account_type"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (table) => [uniqueIndex("workspace_user_id_idx").on(table.userId)],
+  (table) => [
+    uniqueIndex("workspace_user_id_idx").on(table.userId),
+    // The database refuses any value outside the two account types, so an
+    // unrecognized value can never widen or alter an authorization decision.
+    check(
+      "workspace_account_type_valid",
+      sql`${table.accountType} is null or ${table.accountType} in ('brand', 'artist')`,
+    ),
+  ],
 );
 
 /**

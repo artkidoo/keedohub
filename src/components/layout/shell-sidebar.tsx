@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { ContextSwitcher } from "@/components/layout/context-switcher";
 import { NavList } from "@/components/layout/nav-list";
 import { WordmarkLink } from "@/components/layout/wordmark";
-import type { NavItem } from "@/lib/navigation";
+import type { NavItem, WorkspaceContext } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 type ShellSidebarProps = {
@@ -14,6 +14,12 @@ type ShellSidebarProps = {
    * internal chrome such as the Studio.
    */
   showContextSwitcher?: boolean;
+  /**
+   * Contexts this customer may open. The switcher hides itself when fewer
+   * than two contexts are available, so a single-context account never sees
+   * the other workspace offered.
+   */
+  contexts?: readonly WorkspaceContext[];
   /** Optional footer content, pinned to the bottom of the rail. */
   footer?: ReactNode;
   /** Real unread notification count for the current context (see NavList). */
@@ -29,6 +35,7 @@ function ShellSidebar({
   items,
   navLabel,
   showContextSwitcher = true,
+  contexts,
   footer,
   unreadNotifications,
   className,
@@ -39,7 +46,7 @@ function ShellSidebar({
       className={cn("flex min-h-full flex-col gap-6 px-4 py-5", className)}
     >
       <WordmarkLink className="px-1" />
-      {showContextSwitcher ? <ContextSwitcher /> : null}
+      {showContextSwitcher ? <ContextSwitcher contexts={contexts} /> : null}
       <NavList
         items={items}
         label={navLabel}

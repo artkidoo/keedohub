@@ -4,17 +4,14 @@ import {
   Briefcase,
   Check,
   Disc3,
-  FileStack,
   Globe,
   Image as ImageIcon,
-  Layers,
   MessageSquare,
   Music2,
   Palette,
   PanelsTopLeft,
   PenTool,
   Presentation,
-  Share2,
   ShieldCheck,
   Sparkles,
   SwatchBook,
@@ -27,9 +24,11 @@ import { Section } from "@/components/layout/section";
 import { SectionHeader } from "@/components/layout/section-header";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Wordmark, WordmarkLink } from "@/components/layout/wordmark";
+import { ServicesGrid } from "@/components/marketing/services-grid";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { creativeServices } from "@/lib/creative-services";
 import { WORKSPACE_ROOT } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
@@ -65,63 +64,9 @@ const navLinks = [
 /**
  * Creative services. Each entry maps to a real request category a customer can
  * file, so nothing here promises work the production system cannot take on.
+ * The full catalogue — card copy plus dialog detail — lives in
+ * `@/lib/creative-services`, shared with the client services grid.
  */
-const services = [
-  {
-    id: "brand-identity",
-    icon: Sparkles,
-    title: "Brand identity",
-    copy: "Logo systems, colour, type and voice — the identity a business or an artist is recognised by.",
-  },
-  {
-    id: "graphic-design",
-    icon: Layers,
-    title: "Graphic design",
-    copy: "Composed, production-ready graphics for print and screen, built to your brand rather than from a template.",
-  },
-  {
-    id: "web-design",
-    icon: Globe,
-    title: "Website design & development",
-    copy: "Sites designed and built end to end — from structure and layout through to a finished, deployed site.",
-  },
-  {
-    id: "cover-artwork",
-    icon: Disc3,
-    title: "Music cover artwork",
-    copy: "Cover artwork and release visuals for singles, EPs and albums, prepared to release specification.",
-  },
-  {
-    id: "artist-branding",
-    icon: Palette,
-    title: "Artist branding",
-    copy: "A coherent visual identity across every release, so a catalogue reads as one artist rather than a folder of files.",
-  },
-  {
-    id: "social-creatives",
-    icon: Share2,
-    title: "Social media creatives",
-    copy: "Platform-sized creative for announcements, campaigns and ongoing posting.",
-  },
-  {
-    id: "marketing-content",
-    icon: MessageSquare,
-    title: "Marketing content",
-    copy: "Campaign creative and marketing assets written and designed around a clear message.",
-  },
-  {
-    id: "presentations",
-    icon: Presentation,
-    title: "Presentations",
-    copy: "Pitch and investor decks with a consistent design system, not slides rebuilt by hand each time.",
-  },
-  {
-    id: "business-documents",
-    icon: FileStack,
-    title: "Business documents",
-    copy: "Proposals, reports and documents that look like they came from the same business as everything else.",
-  },
-];
 
 /**
  * Selected work.
@@ -231,7 +176,7 @@ const workspaceArtist = [
 const footerNav = [
   {
     heading: "Creative services",
-    links: services.map((service) => ({
+    links: creativeServices.map((service) => ({
       label: service.title,
       href: "#services",
     })),
@@ -498,22 +443,10 @@ function Services() {
           description="From a first identity to the documents that go out under it. Every service below is work we produce and deliver, not a feature you have to learn."
         />
 
-        <ul className="grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-3">
-          {services.map((service) => (
-            <li
-              key={service.id}
-              className="flex flex-col gap-3 bg-surface p-6 transition-colors duration-200 hover:bg-surface-elevated sm:p-7"
-            >
-              <span className="flex size-10 items-center justify-center rounded-lg border border-border bg-surface-elevated text-primary">
-                <service.icon aria-hidden className="size-5" />
-              </span>
-              <h3 className="text-heading font-medium">{service.title}</h3>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                {service.copy}
-              </p>
-            </li>
-          ))}
-        </ul>
+        {/* Client component: each card's "Read more" opens an accessible
+            detail dialog (longer description, deliverables, audience and an
+            enquiry CTA) built on the shared Base UI dialog. */}
+        <ServicesGrid />
       </Container>
     </Section>
   );

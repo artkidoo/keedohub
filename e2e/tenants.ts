@@ -108,6 +108,9 @@ async function signUpReal(page: Page, label: string): Promise<string> {
     await page.getByLabel("Name").fill(`E2E ISO ${label}`);
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Password").fill(E2E_PASSWORD);
+    // Sign-up requires an explicit account type; these fixtures are Brand
+    // tenants, so the form must be completed exactly as a customer would.
+    await page.getByRole("radio", { name: /Brand \/ business/ }).check();
     await page.getByRole("button", { name: "Create workspace" }).click();
     const reached = await page
       .waitForURL(/\/workspace(\/|\?|$)/, { timeout: 40_000 })

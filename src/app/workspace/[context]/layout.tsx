@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { requireWorkspaceContext } from "@/domains/workspace/access";
 import { WorkspaceShell } from "@/components/layout/workspace-shell";
 import { countUnreadNotifications } from "@/domains/notifications/data";
+import { accountTypeOf, workspaceContextsFor } from "@/lib/account-type";
 
 type LayoutProps = {
   children: ReactNode;
@@ -15,8 +16,10 @@ type LayoutProps = {
  *
  * Authorization happens here, server-side: the session is resolved, the
  * caller's owned workspace is loaded, and the requested Brand/Artist context
- * is verified against the database. The URL segment alone grants nothing.
- * Unknown contexts 404 rather than rendering an empty shell.
+ * is verified against the database — first against the workspace's account
+ * type, then against context-profile ownership. The URL segment alone grants
+ * nothing. Unknown or unauthorised contexts 404 rather than rendering an
+ * empty shell.
  */
 export default async function WorkspaceContextLayout({
   children,
@@ -30,6 +33,10 @@ export default async function WorkspaceContextLayout({
 
   const access = await requireWorkspaceContext(context, `/workspace/${context}`);
 
+  // The customer's own contexts — resolved from the workspace row, so the
+  // navigation can never offer a workspace the server would refuse.
+  const contexts = workspaceContextsFor(accountTypeOf(access.workspace));
+
   // The unread marker is part of the shell, so the count is resolved once here
   // for the current context. It is scoped to the session-derived user, owned
   // workspace and context exactly like the list itself (spec §20.2), so it can
@@ -38,7 +45,11 @@ export default async function WorkspaceContextLayout({
   const unreadNotifications = await countUnreadNotifications(access, context);
 
   return (
-    <WorkspaceShell context={context} unreadNotifications={unreadNotifications}>
+    <WorkspaceShell
+      context={context}
+      contexts={contexts}
+      unreadNotifications={unreadNotifications}
+    >
       {children}
     </WorkspaceShell>
   );
